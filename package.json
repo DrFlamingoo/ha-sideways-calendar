@@ -1,0 +1,23 @@
+{
+  "name": "ha-hello-world-card",
+  "version": "0.1.0",
+  "description": "A minimal Home Assistant card that displays a configurable string.",
+  "main": "dist/ha-hello-world-card.js",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c --watch"
+  },
+  "keywords": ["home-assistant", "lovelace", "custom-card"],
+  "license": "MIT",
+  "devDependencies": {
+    "rollup": "^4.0.0",
+    "@rollup/plugin-node-resolve": "^16.0.0",
+    "@rollup/plugin-terser": "^0.4.0",
+    "@rollup/plugin-typescript": "^12.0.0",
+    "typescript": "^5.0.0",
+    "tslib": "^2.6.0"
+  },
+  "dependencies": {
+    "lit": "^3.0.0"
+  }
+}
