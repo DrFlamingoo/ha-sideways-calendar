@@ -1,0 +1,6 @@
+{
+  "name": "Hello World Card",
+  "render_readme": true,
+  "filename": "ha-hello-world-card.js",
+  "content_in_root": false
+}
