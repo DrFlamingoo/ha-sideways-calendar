@@ -1,9 +1,29 @@
-import { LitElement, html, css, PropertyValues } from "lit";
+import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
+import { renderTimeline } from "./timeline-svg.js";
+import {
+  RawEvent,
+  TimelineEvent,
+  CalendarInfo,
+  CALENDAR_COLORS,
+  assignLanes,
+} from "./layout.js";
 
 interface CardConfig {
   type: string;
   calendars?: string[];
+}
+
+interface HACalendarEventTime {
+  dateTime?: string;
+  date?: string;
+}
+
+interface HACalendarEvent {
+  start: HACalendarEventTime;
+  end: HACalendarEventTime;
+  summary: string;
+  uid?: string;
 }
 
 interface HassEntity {
@@ -18,18 +38,22 @@ interface Hass {
   callApi: <T>(method: string, path: string) => Promise<T>;
 }
 
-interface CalendarEventCount {
-  entity_id: string;
-  name: string;
-  count: number;
+function parseEventTime(time: HACalendarEventTime, fallback: Date): Date {
+  if (time.dateTime) return new Date(time.dateTime);
+  if (time.date) return new Date(time.date + "T00:00:00");
+  return fallback;
 }
 
 @customElement("sideways-calendar-card")
 export class SidewaysCalendarCard extends LitElement {
   @state() private _config!: CardConfig;
-  @state() private _eventCounts: CalendarEventCount[] = [];
+  @state() private _events: TimelineEvent[] = [];
+  @state() private _calendars: CalendarInfo[] = [];
+  @state() private _now = new Date();
+
   private _hass?: Hass;
   private _lastFetchKey = "";
+  private _timer?: number;
 
   set hass(hass: Hass) {
     this._hass = hass;
@@ -41,18 +65,34 @@ export class SidewaysCalendarCard extends LitElement {
     return this._hass;
   }
 
+  connectedCallback() {
+    super.connectedCallback();
+    this._timer = window.setInterval(() => {
+      this._now = new Date();
+    }, 60_000);
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this._timer) {
+      clearInterval(this._timer);
+      this._timer = undefined;
+    }
+  }
+
   setConfig(config: CardConfig) {
     this._config = config;
     this._lastFetchKey = "";
+    this._buildCalendarInfos();
     this._tryFetchEvents();
   }
 
   getCardSize() {
-    return 2;
+    return 3;
   }
 
   getGridOptions() {
-    return { rows: 2, columns: 6, min_rows: 2, min_columns: 3 };
+    return { rows: 3, columns: 12, min_rows: 2, min_columns: 6 };
   }
 
   static getStubConfig(hass: Hass) {
@@ -78,6 +118,20 @@ export class SidewaysCalendarCard extends LitElement {
     };
   }
 
+  private _buildCalendarInfos() {
+    const calIds = this._config?.calendars || [];
+    this._calendars = calIds.map((entityId, i) => {
+      const name =
+        (this._hass?.states[entityId]?.attributes?.friendly_name as string) ||
+        entityId;
+      return {
+        entityId,
+        name,
+        color: CALENDAR_COLORS[i % CALENDAR_COLORS.length],
+      };
+    });
+  }
+
   private _tryFetchEvents() {
     if (!this._hass || !this._config) return;
     const today = new Date().toISOString().split("T")[0];
@@ -85,50 +139,57 @@ export class SidewaysCalendarCard extends LitElement {
     const key = `${today}|${cals}`;
     if (key === this._lastFetchKey) return;
     this._lastFetchKey = key;
+    this._buildCalendarInfos();
     this._fetchEvents();
   }
 
   private async _fetchEvents() {
     const hass = this._hass!;
-    const calendars = this._config.calendars || [];
-    if (calendars.length === 0) {
-      this._eventCounts = [];
+    const calIds = this._config.calendars || [];
+    if (calIds.length === 0) {
+      this._events = [];
       return;
     }
 
     const now = new Date();
-    const startOfDay = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate()
-    );
-    const endOfDay = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      now.getDate() + 1
-    );
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
     const start = startOfDay.toISOString();
     const end = endOfDay.toISOString();
 
-    const counts: CalendarEventCount[] = await Promise.all(
-      calendars.map(async (entityId) => {
-        const stateObj = hass.states[entityId];
-        const name =
-          (stateObj?.attributes?.friendly_name as string) || entityId;
+    const rawEvents: RawEvent[] = [];
+
+    await Promise.all(
+      calIds.map(async (entityId) => {
         try {
-          const events = await hass.callApi<unknown[]>(
+          const haEvents = await hass.callApi<HACalendarEvent[]>(
             "GET",
-            `calendars/${entityId}?start=${start}&end=${end}`
+            `calendars/${entityId}?start=${start}&end=${end}`,
           );
-          return { entity_id: entityId, name, count: events.length };
-        } catch (e) {
-          console.error(`Failed to fetch events for ${entityId}:`, e);
-          return { entity_id: entityId, name, count: 0 };
+          for (const e of haEvents) {
+            const eStart = parseEventTime(e.start, startOfDay);
+            const eEnd = parseEventTime(e.end, endOfDay);
+            const clampedStart = new Date(
+              Math.max(eStart.getTime(), startOfDay.getTime()),
+            );
+            const clampedEnd = new Date(
+              Math.min(eEnd.getTime(), endOfDay.getTime()),
+            );
+            rawEvents.push({
+              id: `${entityId}|${e.summary}|${eStart.toISOString()}`,
+              start: clampedStart,
+              end: clampedEnd,
+              title: e.summary,
+              calendarIds: [entityId],
+            });
+          }
+        } catch (err) {
+          console.error(`Failed to fetch events for ${entityId}:`, err);
         }
-      })
+      }),
     );
 
-    this._eventCounts = counts;
+    this._events = assignLanes(rawEvents);
   }
 
   render() {
@@ -137,16 +198,9 @@ export class SidewaysCalendarCard extends LitElement {
     return html`
       <ha-card header="${userName}'s Calendar">
         <div class="card-content">
-          ${this._eventCounts.length === 0
+          ${this._calendars.length === 0
             ? html`<p class="empty">No calendars configured.</p>`
-            : this._eventCounts.map(
-                (cal) => html`
-                  <div class="calendar-row">
-                    <span class="calendar-name">${cal.name}</span>
-                    <span class="event-count">${cal.count}</span>
-                  </div>
-                `
-              )}
+            : renderTimeline(this._events, this._calendars, this._now)}
         </div>
       </ha-card>
     `;
@@ -164,27 +218,6 @@ export class SidewaysCalendarCard extends LitElement {
     }
     .card-content {
       padding: 0 16px 16px;
-    }
-    .calendar-row {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 8px 0;
-      border-bottom: 1px solid var(--divider-color, #e0e0e0);
-    }
-    .calendar-row:last-child {
-      border-bottom: none;
-    }
-    .calendar-name {
-      font-size: 14px;
-      color: var(--primary-text-color);
-    }
-    .event-count {
-      font-size: 20px;
-      font-weight: bold;
-      color: var(--primary-color);
-      min-width: 32px;
-      text-align: center;
     }
     .empty {
       color: var(--secondary-text-color);
