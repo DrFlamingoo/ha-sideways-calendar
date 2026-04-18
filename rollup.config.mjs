@@ -3,9 +3,9 @@ import terser from "@rollup/plugin-terser";
 import typescript from "@rollup/plugin-typescript";
 
 export default {
-  input: "src/ha-hello-world-card.ts",
+  input: "src/sideways-calendar-card.ts",
   output: {
-    file: "dist/ha-hello-world-card.js",
+    file: "dist/sideways-calendar-card.js",
     format: "es",
   },
   plugins: [

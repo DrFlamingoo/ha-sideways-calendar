@@ -1,8 +1,8 @@
 {
-  "name": "ha-hello-world-card",
+  "name": "ha-sideways-calendar",
   "version": "0.1.0",
-  "description": "A minimal Home Assistant card that displays a configurable string.",
-  "main": "dist/ha-hello-world-card.js",
+  "description": "A Home Assistant card that shows calendar event counts for today.",
+  "main": "dist/sideways-calendar-card.js",
   "scripts": {
     "build": "rollup -c",
     "watch": "rollup -c --watch"

@@ -1,4 +1,4 @@
-CARD_FILE := dist/ha-hello-world-card.js
+CARD_FILE := dist/sideways-calendar-card.js
 CONTAINER := ha-test
 HA_IMAGE := ghcr.io/home-assistant/home-assistant:stable
 HA_PORT := 8123
@@ -15,10 +15,10 @@ ha-start: build
 	@docker inspect $(CONTAINER) >/dev/null 2>&1 && docker rm -f $(CONTAINER) || true
 	docker run -d --name $(CONTAINER) \
 		-p $(HA_PORT):8123 \
-		-v $(CURDIR)/$(CARD_FILE):/config/www/ha-hello-world-card.js:ro \
+		-v $(CURDIR)/$(CARD_FILE):/config/www/sideways-calendar-card.js:ro \
 		$(HA_IMAGE)
 	@echo "HA starting at http://localhost:$(HA_PORT)"
-	@echo "Add resource: /local/ha-hello-world-card.js (JS module)"
+	@echo "Add resource: /local/sideways-calendar-card.js (JS module)"
 
 ha-stop:
 	docker rm -f $(CONTAINER)
