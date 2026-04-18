@@ -1,0 +1,116 @@
+/** Shared types and layout computation — no rendering code here. */
+
+export interface RawEvent {
+  id: string;
+  start: Date;
+  end: Date;
+  title: string;
+  calendarIds: string[];
+}
+
+export interface TimelineEvent extends RawEvent {
+  lane: number;
+}
+
+export interface CalendarInfo {
+  entityId: string;
+  name: string;
+  color: string;
+}
+
+export interface LayoutConfig {
+  startHour: number;
+  endHour: number;
+  viewBoxWidth: number;
+  axisY: number;
+  laneHeight: number;
+  laneGap: number;
+  axisLaneGap: number;
+  paddingLeft: number;
+  paddingRight: number;
+  calendarLineSpacing: number;
+  curveRadius: number;
+}
+
+export const DEFAULT_CONFIG: LayoutConfig = {
+  startHour: 0,
+  endHour: 24,
+  viewBoxWidth: 1000,
+  axisY: 28,
+  laneHeight: 26,
+  laneGap: 4,
+  axisLaneGap: 14,
+  paddingLeft: 20,
+  paddingRight: 10,
+  calendarLineSpacing: 3,
+  curveRadius: 12,
+};
+
+export const CALENDAR_COLORS = [
+  "#4285F4",
+  "#EA4335",
+  "#34A853",
+  "#FBBC04",
+  "#FF6D01",
+  "#46BDC6",
+  "#7B1FA2",
+  "#E91E63",
+];
+
+export function todayAt(hour: number): Date {
+  const d = new Date();
+  d.setHours(hour, 0, 0, 0);
+  return d;
+}
+
+export function timeToX(date: Date, config: LayoutConfig): number {
+  const hours =
+    date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+  const frac = (hours - config.startHour) / (config.endHour - config.startHour);
+  const clamped = Math.max(0, Math.min(1, frac));
+  const usable = config.viewBoxWidth - config.paddingLeft - config.paddingRight;
+  return config.paddingLeft + clamped * usable;
+}
+
+export function laneToY(lane: number, config: LayoutConfig): number {
+  return config.axisY + config.axisLaneGap + lane * (config.laneHeight + config.laneGap);
+}
+
+export function calendarHomeY(
+  index: number,
+  total: number,
+  config: LayoutConfig,
+): number {
+  const span = (total - 1) * config.calendarLineSpacing;
+  return config.axisY - span / 2 + index * config.calendarLineSpacing;
+}
+
+/** Greedy first-fit lane assignment. */
+export function assignLanes(events: RawEvent[]): TimelineEvent[] {
+  const sorted = [...events].sort(
+    (a, b) => a.start.getTime() - b.start.getTime(),
+  );
+  const laneEnds: number[] = [];
+  return sorted.map((event) => {
+    let lane = laneEnds.findIndex((end) => end <= event.start.getTime());
+    if (lane === -1) {
+      lane = laneEnds.length;
+      laneEnds.push(0);
+    }
+    laneEnds[lane] = event.end.getTime();
+    return { ...event, lane };
+  });
+}
+
+export function getLaneCount(events: TimelineEvent[]): number {
+  if (events.length === 0) return 0;
+  return Math.max(...events.map((e) => e.lane)) + 1;
+}
+
+export function computeHeight(
+  laneCount: number,
+  config: LayoutConfig,
+): number {
+  if (laneCount === 0) return config.axisY + 30;
+  return laneToY(laneCount - 1, config) + config.laneHeight + 10;
+}
