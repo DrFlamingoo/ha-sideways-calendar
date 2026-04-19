@@ -189,7 +189,24 @@ export class SidewaysCalendarCard extends LitElement {
       }),
     );
 
-    this._events = assignLanes(rawEvents);
+    /* ---- merge duplicates (same title + same start + same end, rounded to minute) ---- */
+    const roundMin = (d: Date) => Math.round(d.getTime() / 60_000);
+    const mergeMap = new Map<string, RawEvent>();
+    for (const event of rawEvents) {
+      const key = `${event.title}|${roundMin(event.start)}|${roundMin(event.end)}`;
+      const existing = mergeMap.get(key);
+      if (existing) {
+        for (const cid of event.calendarIds) {
+          if (!existing.calendarIds.includes(cid)) {
+            existing.calendarIds.push(cid);
+          }
+        }
+      } else {
+        mergeMap.set(key, event);
+      }
+    }
+
+    this._events = assignLanes([...mergeMap.values()]);
   }
 
   render() {
