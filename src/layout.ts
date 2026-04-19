@@ -1,11 +1,25 @@
 /** Shared types and layout computation — no rendering code here. */
 
+export interface CalendarEntry {
+  entity: string;
+  work?: boolean;
+}
+
+export function normalizeSlotValue(
+  value: string | CalendarEntry[] | undefined,
+): CalendarEntry[] | undefined {
+  if (!value) return undefined;
+  if (typeof value === "string") return [{ entity: value }];
+  return value;
+}
+
 export interface RawEvent {
   id: string;
   start: Date;
   end: Date;
   title: string;
   calendarIds: string[];
+  work?: boolean;
 }
 
 export interface TimelineEvent extends RawEvent {
@@ -13,7 +27,7 @@ export interface TimelineEvent extends RawEvent {
 }
 
 export interface CalendarInfo {
-  entityId: string;
+  id: string;
   name: string;
   color: string;
 }

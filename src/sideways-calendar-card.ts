@@ -5,6 +5,8 @@ import {
   RawEvent,
   TimelineEvent,
   CalendarInfo,
+  CalendarEntry,
+  normalizeSlotValue,
   assignLanes,
 } from "./layout.js";
 import {
@@ -17,10 +19,11 @@ import "./editor.js";
 interface CardConfig {
   type: string;
   colorScheme?: string;
-  calendarA?: string;
-  calendarB?: string;
-  calendarC?: string;
-  calendarD?: string;
+  workStyle?: string;
+  calendarA?: CalendarEntry[];
+  calendarB?: CalendarEntry[];
+  calendarC?: CalendarEntry[];
+  calendarD?: CalendarEntry[];
 }
 
 interface HACalendarEventTime {
@@ -73,10 +76,50 @@ export class SidewaysCalendarCard extends LitElement {
 
   private static readonly SLOT_LABELS = ["A", "B", "C", "D"];
 
-  private _getCalendarIds(): string[] {
-    return SidewaysCalendarCard.SLOTS
-      .map((key) => this._config?.[key])
-      .filter((v): v is string => !!v);
+  /** Build a map from entity_id → slot key for all configured entities. */
+  private _entityToSlot(): Map<string, string> {
+    const map = new Map<string, string>();
+    for (const slot of SidewaysCalendarCard.SLOTS) {
+      const entries = this._config?.[slot];
+      if (!entries) continue;
+      for (const e of entries) {
+        map.set(e.entity, slot);
+      }
+    }
+    return map;
+  }
+
+  /** Set of entity IDs flagged as "work" across all slots. */
+  private _workEntities(): Set<string> {
+    const set = new Set<string>();
+    for (const slot of SidewaysCalendarCard.SLOTS) {
+      const entries = this._config?.[slot];
+      if (!entries) continue;
+      for (const e of entries) {
+        if (e.work) set.add(e.entity);
+      }
+    }
+    return set;
+  }
+
+  /** All unique entity IDs across all slots. */
+  private _allEntityIds(): string[] {
+    const ids: string[] = [];
+    for (const slot of SidewaysCalendarCard.SLOTS) {
+      const entries = this._config?.[slot];
+      if (!entries) continue;
+      for (const e of entries) {
+        if (!ids.includes(e.entity)) ids.push(e.entity);
+      }
+    }
+    return ids;
+  }
+
+  /** Slot keys that have at least one entity. */
+  private _activeSlots(): typeof SidewaysCalendarCard.SLOTS[number][] {
+    return SidewaysCalendarCard.SLOTS.filter(
+      (slot) => (this._config?.[slot]?.length ?? 0) > 0,
+    );
   }
 
   set hass(hass: Hass) {
@@ -104,8 +147,19 @@ export class SidewaysCalendarCard extends LitElement {
     }
   }
 
-  setConfig(config: CardConfig) {
-    this._config = config;
+  setConfig(config: Record<string, unknown>) {
+    const normalized: CardConfig = {
+      type: config.type as string,
+      colorScheme: config.colorScheme as string | undefined,
+      workStyle: config.workStyle as string | undefined,
+    };
+    for (const slot of SidewaysCalendarCard.SLOTS) {
+      const val = normalizeSlotValue(
+        config[slot] as string | CalendarEntry[] | undefined,
+      );
+      if (val) normalized[slot] = val;
+    }
+    this._config = normalized;
     this._lastFetchKey = "";
     this._buildCalendarInfos();
     this._tryFetchEvents();
@@ -123,12 +177,11 @@ export class SidewaysCalendarCard extends LitElement {
     const calendars = Object.keys(hass.states).filter((e) =>
       e.startsWith("calendar.")
     );
-    return {
-      calendarA: calendars[0],
-      calendarB: calendars[1],
-      calendarC: calendars[2],
-      calendarD: calendars[3],
-    };
+    const stub: Record<string, unknown> = {};
+    for (let i = 0; i < Math.min(calendars.length, 4); i++) {
+      stub[SidewaysCalendarCard.SLOTS[i]] = [{ entity: calendars[i] }];
+    }
+    return stub;
   }
 
   static getConfigElement() {
@@ -136,15 +189,16 @@ export class SidewaysCalendarCard extends LitElement {
   }
 
   private _buildCalendarInfos() {
-    const calIds = this._getCalendarIds();
     const scheme = getScheme(this._config?.colorScheme);
-    this._calendars = calIds.map((entityId, i) => {
-      const name =
-        (this._hass?.states[entityId]?.attributes?.friendly_name as string) ||
-        entityId;
+    const active = this._activeSlots();
+    this._calendars = active.map((slot, i) => {
+      const entries = this._config[slot]!;
+      const firstName =
+        (this._hass?.states[entries[0].entity]?.attributes
+          ?.friendly_name as string) || entries[0].entity;
       return {
-        entityId,
-        name,
+        id: slot,
+        name: firstName,
         color: calendarColor(i, scheme),
       };
     });
@@ -153,7 +207,7 @@ export class SidewaysCalendarCard extends LitElement {
   private _tryFetchEvents() {
     if (!this._hass || !this._config) return;
     const today = new Date().toISOString().split("T")[0];
-    const cals = this._getCalendarIds().join(",");
+    const cals = this._allEntityIds().join(",");
     const key = `${today}|${cals}`;
     if (key === this._lastFetchKey) return;
     this._lastFetchKey = key;
@@ -163,11 +217,14 @@ export class SidewaysCalendarCard extends LitElement {
 
   private async _fetchEvents() {
     const hass = this._hass!;
-    const calIds = this._getCalendarIds();
-    if (calIds.length === 0) {
+    const entityIds = this._allEntityIds();
+    if (entityIds.length === 0) {
       this._events = [];
       return;
     }
+
+    const entityToSlot = this._entityToSlot();
+    const workEntities = this._workEntities();
 
     const now = new Date();
     const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -178,7 +235,10 @@ export class SidewaysCalendarCard extends LitElement {
     const rawEvents: RawEvent[] = [];
 
     await Promise.all(
-      calIds.map(async (entityId) => {
+      entityIds.map(async (entityId) => {
+        const slotId = entityToSlot.get(entityId);
+        if (!slotId) return;
+        const isWork = workEntities.has(entityId);
         try {
           const haEvents = await hass.callApi<HACalendarEvent[]>(
             "GET",
@@ -194,11 +254,12 @@ export class SidewaysCalendarCard extends LitElement {
               Math.min(eEnd.getTime(), endOfDay.getTime()),
             );
             rawEvents.push({
-              id: `${entityId}|${e.summary}|${eStart.toISOString()}`,
+              id: `${slotId}|${e.summary}|${eStart.toISOString()}`,
               start: clampedStart,
               end: clampedEnd,
               title: e.summary,
-              calendarIds: [entityId],
+              calendarIds: [slotId],
+              work: isWork,
             });
           }
         } catch (err) {
@@ -219,6 +280,8 @@ export class SidewaysCalendarCard extends LitElement {
             existing.calendarIds.push(cid);
           }
         }
+        /* work only if ALL sources are work */
+        if (!event.work) existing.work = false;
       } else {
         mergeMap.set(key, event);
       }
@@ -230,7 +293,8 @@ export class SidewaysCalendarCard extends LitElement {
   render() {
     const userName = this._hass?.user?.name || "User";
     const scheme = getScheme(this._config?.colorScheme);
-    const calIds = this._calendars.map((c) => c.entityId);
+    const calIds = this._calendars.map((c) => c.id);
+    const workStyle = this._config?.workStyle || "dimmed";
     const combos = this._calendars.length > 1
       ? allCombinations(calIds, scheme)
       : [];
@@ -240,7 +304,7 @@ export class SidewaysCalendarCard extends LitElement {
         <div class="card-content">
           ${this._calendars.length === 0
             ? html`<p class="empty">No calendars configured.</p>`
-            : renderTimeline(this._events, this._calendars, this._now, undefined, scheme)}
+            : renderTimeline(this._events, this._calendars, this._now, undefined, scheme, workStyle)}
           ${combos.length > 0
             ? html`
               <div class="legend">

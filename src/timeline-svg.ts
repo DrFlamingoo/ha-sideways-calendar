@@ -25,9 +25,10 @@ export function renderTimeline(
   now: Date,
   config: LayoutConfig = DEFAULT_CONFIG,
   scheme?: ColorScheme,
+  workStyle: string = "dimmed",
 ): SVGTemplateResult {
   const cs = scheme || getScheme();
-  const calIds = calendars.map((c) => c.entityId);
+  const calIds = calendars.map((c) => c.id);
   const laneCount = getLaneCount(events);
   const height = computeHeight(laneCount, config);
 
@@ -40,10 +41,10 @@ export function renderTimeline(
       ${renderNowLine(now, height, config)}
       ${calendars.map((cal, i) =>
         renderCalendarLine(
-          cal.entityId, cal.color, events, i, calendars.length, config,
+          cal.id, cal.color, events, i, calendars.length, config,
         ),
       )}
-      ${renderEventBoxes(events, calendars, calIds, cs, config)}
+      ${renderEventBoxes(events, calendars, calIds, cs, config, workStyle)}
       ${renderNowDot(now, config)}
     </svg>
   `;
@@ -199,6 +200,7 @@ function renderEventBoxes(
   calendarOrder: string[],
   scheme: ColorScheme,
   config: LayoutConfig,
+  workStyle: string,
 ): SVGTemplateResult {
   return svg`${events.map((event) => {
     const x = timeToX(event.start, config);
@@ -208,6 +210,9 @@ function renderEventBoxes(
     const h = config.laneHeight;
 
     const color = eventColor(event.calendarIds, calendarOrder, scheme);
+    const isWork = event.work && workStyle !== "normal";
+    const fillOpacity = isWork ? "0.07" : "0.15";
+    const dash = isWork ? "3,2" : "none";
 
     return svg`
       <g>
@@ -217,15 +222,17 @@ function renderEventBoxes(
               stroke="none" />
         <rect x="${x}" y="${y}" width="${w}" height="${h}"
               rx="4" ry="4"
-              fill="${color}" fill-opacity="0.15"
-              stroke="${color}" stroke-width="1" />
+              fill="${color}" fill-opacity="${fillOpacity}"
+              stroke="${color}" stroke-width="1"
+              stroke-dasharray="${dash}" />
         ${w > 40
           ? svg`
             <text x="${x + 4}" y="${y + h / 2}"
                   dominant-baseline="central"
                   font-size="10"
                   fill="var(--primary-text-color, #333)"
-                  pointer-events="none">
+                  pointer-events="none"
+                  opacity="${isWork ? 0.6 : 1}">
               ${event.title}
             </text>`
           : nothing}

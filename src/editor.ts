@@ -1,14 +1,16 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { COLOR_SCHEMES, getScheme, calendarColor } from "./colors.js";
+import { CalendarEntry, normalizeSlotValue } from "./layout.js";
 
 interface CardConfig {
   type: string;
   colorScheme?: string;
-  calendarA?: string;
-  calendarB?: string;
-  calendarC?: string;
-  calendarD?: string;
+  workStyle?: string;
+  calendarA?: CalendarEntry[];
+  calendarB?: CalendarEntry[];
+  calendarC?: CalendarEntry[];
+  calendarD?: CalendarEntry[];
 }
 
 interface HassEntity {
@@ -22,6 +24,10 @@ interface Hass {
 
 const SLOTS = ["calendarA", "calendarB", "calendarC", "calendarD"] as const;
 const SLOT_LABELS = ["A", "B", "C", "D"];
+const WORK_STYLES = [
+  { value: "dimmed", label: "Dimmed (dashed border, lower opacity)" },
+  { value: "normal", label: "No distinction" },
+];
 
 @customElement("sideways-calendar-card-editor")
 export class SidewaysCalendarCardEditor extends LitElement {
@@ -33,8 +39,19 @@ export class SidewaysCalendarCardEditor extends LitElement {
     this._hass = hass;
   }
 
-  setConfig(config: CardConfig) {
-    this._config = { ...config };
+  setConfig(config: Record<string, unknown>) {
+    const normalized: CardConfig = {
+      type: config.type as string,
+      colorScheme: config.colorScheme as string | undefined,
+      workStyle: config.workStyle as string | undefined,
+    };
+    for (const slot of SLOTS) {
+      const val = normalizeSlotValue(
+        config[slot] as string | CalendarEntry[] | undefined,
+      );
+      if (val) normalized[slot] = val;
+    }
+    this._config = normalized;
   }
 
   private _fireChange() {
@@ -53,15 +70,42 @@ export class SidewaysCalendarCardEditor extends LitElement {
     this._fireChange();
   }
 
-  private _calendarChanged(slot: typeof SLOTS[number], entityId: string) {
-    this._config = { ...this._config, [slot]: entityId || undefined };
+  private _workStyleChanged(e: Event) {
+    const target = e.target as HTMLSelectElement;
+    this._config = { ...this._config, workStyle: target.value };
     this._fireChange();
   }
 
-  private _clearCalendar(slot: typeof SLOTS[number]) {
-    const updated = { ...this._config };
-    delete updated[slot];
-    this._config = updated;
+  private _addEntity(slot: typeof SLOTS[number], entityId: string) {
+    if (!entityId) return;
+    const current = this._config[slot] || [];
+    if (current.some((e) => e.entity === entityId)) return;
+    this._config = {
+      ...this._config,
+      [slot]: [...current, { entity: entityId }],
+    };
+    this._fireChange();
+  }
+
+  private _removeEntity(slot: typeof SLOTS[number], index: number) {
+    const current = this._config[slot] || [];
+    const updated = current.filter((_, i) => i !== index);
+    const cfg = { ...this._config };
+    if (updated.length === 0) {
+      delete cfg[slot];
+    } else {
+      cfg[slot] = updated;
+    }
+    this._config = cfg;
+    this._fireChange();
+  }
+
+  private _toggleWork(slot: typeof SLOTS[number], index: number) {
+    const current = this._config[slot] || [];
+    const updated = current.map((entry, i) =>
+      i === index ? { ...entry, work: !entry.work } : entry,
+    );
+    this._config = { ...this._config, [slot]: updated };
     this._fireChange();
   }
 
@@ -91,10 +135,11 @@ export class SidewaysCalendarCardEditor extends LitElement {
       <div class="editor">
         <div class="section">
           <div class="section-header">
-            <ha-icon icon="mdi:palette"></ha-icon>
-            <span>Color Scheme</span>
+            <ha-icon icon="mdi:cog"></ha-icon>
+            <span>General</span>
           </div>
-          <div class="section-content">
+          <div class="section-content column">
+            <label class="field-label">Color Scheme</label>
             <select
               .value=${this._config?.colorScheme || "colorblind"}
               @change=${this._schemeChanged}
@@ -107,14 +152,31 @@ export class SidewaysCalendarCardEditor extends LitElement {
                 `,
               )}
             </select>
+            <label class="field-label">Work Event Style</label>
+            <select
+              .value=${this._config?.workStyle || "dimmed"}
+              @change=${this._workStyleChanged}
+            >
+              ${WORK_STYLES.map(
+                (s) => html`
+                  <option value=${s.value} ?selected=${s.value === (this._config?.workStyle || "dimmed")}>
+                    ${s.label}
+                  </option>
+                `,
+              )}
+            </select>
           </div>
         </div>
 
         ${SLOTS.map((slot, i) => {
           const label = SLOT_LABELS[i];
           const color = calendarColor(i, scheme);
-          const value = this._config?.[slot] || "";
+          const entries = this._config?.[slot] || [];
           const expanded = this._expandedSlot === i;
+          const summary =
+            entries.length > 0
+              ? entries.map((e) => this._friendlyName(e.entity)).join(", ")
+              : "(not set)";
 
           return html`
             <div class="section">
@@ -125,9 +187,9 @@ export class SidewaysCalendarCardEditor extends LitElement {
                 <span class="color-dot" style="background:${color}"></span>
                 <span class="slot-title">
                   Calendar ${label}
-                  ${value
-                    ? html` — <em>${this._friendlyName(value)}</em>`
-                    : html` <span class="unset">(not set)</span>`}
+                  ${entries.length > 0
+                    ? html` — <em>${summary}</em>`
+                    : html` <span class="unset">${summary}</span>`}
                 </span>
                 <ha-icon
                   icon=${expanded ? "mdi:chevron-up" : "mdi:chevron-down"}
@@ -135,34 +197,58 @@ export class SidewaysCalendarCardEditor extends LitElement {
               </div>
               ${expanded
                 ? html`
-                    <div class="section-content">
-                      <select
-                        .value=${value}
-                        @change=${(e: Event) =>
-                          this._calendarChanged(
-                            slot,
-                            (e.target as HTMLSelectElement).value,
-                          )}
-                      >
-                        <option value="">— Select calendar —</option>
-                        ${calEntities.map(
-                          (eid) => html`
-                            <option value=${eid} ?selected=${eid === value}>
-                              ${this._friendlyName(eid)}
-                            </option>
-                          `,
-                        )}
-                      </select>
-                      ${value
+                    <div class="section-content column">
+                      ${entries.length > 0
                         ? html`
-                            <button
-                              class="clear-btn"
-                              @click=${() => this._clearCalendar(slot)}
-                            >
-                              Clear
-                            </button>
+                            <div class="entity-list">
+                              ${entries.map(
+                                (entry, ei) => html`
+                                  <div class="entity-row">
+                                    <span class="entity-name">
+                                      ${this._friendlyName(entry.entity)}
+                                    </span>
+                                    <label class="work-toggle">
+                                      <input
+                                        type="checkbox"
+                                        .checked=${!!entry.work}
+                                        @change=${() =>
+                                          this._toggleWork(slot, ei)}
+                                      />
+                                      Work
+                                    </label>
+                                    <button
+                                      class="remove-btn"
+                                      @click=${() =>
+                                        this._removeEntity(slot, ei)}
+                                    >
+                                      ×
+                                    </button>
+                                  </div>
+                                `,
+                              )}
+                            </div>
                           `
                         : ""}
+                      <select
+                        @change=${(e: Event) => {
+                          const sel = e.target as HTMLSelectElement;
+                          this._addEntity(slot, sel.value);
+                          sel.value = "";
+                        }}
+                      >
+                        <option value="">+ Add calendar…</option>
+                        ${calEntities
+                          .filter(
+                            (eid) => !entries.some((e) => e.entity === eid),
+                          )
+                          .map(
+                            (eid) => html`
+                              <option value=${eid}>
+                                ${this._friendlyName(eid)}
+                              </option>
+                            `,
+                          )}
+                      </select>
                     </div>
                   `
                 : ""}
@@ -201,6 +287,9 @@ export class SidewaysCalendarCardEditor extends LitElement {
     }
     .slot-title {
       flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .slot-title em {
       font-weight: 400;
@@ -223,8 +312,17 @@ export class SidewaysCalendarCardEditor extends LitElement {
       gap: 8px;
       align-items: center;
     }
+    .section-content.column {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .field-label {
+      font-size: 12px;
+      font-weight: 500;
+      color: var(--secondary-text-color);
+      margin-bottom: -4px;
+    }
     select {
-      flex: 1;
       padding: 8px;
       border: 1px solid var(--divider-color, #ccc);
       border-radius: 4px;
@@ -232,16 +330,53 @@ export class SidewaysCalendarCardEditor extends LitElement {
       color: var(--primary-text-color);
       font-size: 14px;
     }
-    .clear-btn {
-      padding: 6px 12px;
-      border: 1px solid var(--divider-color, #ccc);
+    .entity-list {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .entity-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 8px;
+      border: 1px solid var(--divider-color, #e0e0e0);
       border-radius: 4px;
-      background: none;
-      color: var(--error-color, #db4437);
-      cursor: pointer;
       font-size: 13px;
     }
-    .clear-btn:hover {
+    .entity-name {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .work-toggle {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      color: var(--secondary-text-color);
+      white-space: nowrap;
+      cursor: pointer;
+    }
+    .work-toggle input {
+      cursor: pointer;
+    }
+    .remove-btn {
+      width: 24px;
+      height: 24px;
+      border: none;
+      background: none;
+      color: var(--error-color, #db4437);
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .remove-btn:hover {
       background: var(--error-color, #db4437);
       color: #fff;
     }
