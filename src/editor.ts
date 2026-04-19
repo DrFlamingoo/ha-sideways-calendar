@@ -9,6 +9,7 @@ interface CardConfig {
   workStyle?: string;
   showDeclined?: boolean;
   showTentative?: boolean;
+  inlineLabels?: boolean;
   calendarA?: CalendarEntry[];
   calendarB?: CalendarEntry[];
   calendarC?: CalendarEntry[];
@@ -64,6 +65,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
       workStyle: config.workStyle as string | undefined,
       showDeclined: config.showDeclined as boolean | undefined,
       showTentative: config.showTentative as boolean | undefined,
+      inlineLabels: config.inlineLabels as boolean | undefined,
     };
     for (let i = 0; i < SLOTS.length; i++) {
       const val = normalizeSlotValue(
@@ -109,6 +111,11 @@ export class SidewaysCalendarCardEditor extends LitElement {
 
   private _toggleShowTentative() {
     this._config = { ...this._config, showTentative: !(this._config.showTentative ?? true) };
+    this._fireChange();
+  }
+
+  private _toggleInlineLabels() {
+    this._config = { ...this._config, inlineLabels: !(this._config.inlineLabels ?? false) };
     this._fireChange();
   }
 
@@ -260,6 +267,15 @@ export class SidewaysCalendarCardEditor extends LitElement {
                 @change=${this._toggleShowDeclined}
               />
               Show declined events
+            </label>
+            <label class="field-label">Labels</label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                .checked=${this._config?.inlineLabels ?? false}
+                @change=${this._toggleInlineLabels}
+              />
+              Inline labels on calendar lines
             </label>
           </div>
         </div>

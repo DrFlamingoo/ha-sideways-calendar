@@ -16,6 +16,19 @@ import {
 import { ColorScheme, eventColor, getScheme } from "./colors.js";
 
 /* ------------------------------------------------------------------ */
+/*  Inline label types                                                 */
+/* ------------------------------------------------------------------ */
+
+interface InlineLabel {
+  calIndex: number;
+  x: number;
+  width: number;
+  homeY: number;
+  text: string;
+  color: string;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Public entry point                                                 */
 /* ------------------------------------------------------------------ */
 
@@ -26,11 +39,16 @@ export function renderTimeline(
   config: LayoutConfig = DEFAULT_CONFIG,
   scheme?: ColorScheme,
   workStyle: string = "dimmed",
+  inlineLabels: boolean = false,
 ): SVGTemplateResult {
   const cs = scheme || getScheme();
   const calIds = calendars.map((c) => c.id);
   const laneCount = getLaneCount(events);
   const height = computeHeight(laneCount, config);
+
+  const labels = inlineLabels && calendars.length > 0
+    ? computeInlineLabels(calendars, laneCount, config)
+    : undefined;
 
   return svg`
     <svg viewBox="0 0 ${config.viewBoxWidth} ${height}"
@@ -41,10 +59,12 @@ export function renderTimeline(
       ${renderNowLine(now, height, config)}
       ${calendars.map((cal, i) =>
         renderCalendarLine(
-          cal.id, cal.color, events, i, calendars.length, config,
+          cal.id, cal.color, events, i, calendars.length, laneCount, config,
+          labels,
         ),
       )}
       ${renderEventBoxes(events, calendars, calIds, cs, config, workStyle)}
+      ${labels ? renderInlineLabelTexts(labels) : nothing}
       ${renderNowDot(now, config)}
     </svg>
   `;
@@ -89,6 +109,49 @@ function renderAxis(config: LayoutConfig): SVGTemplateResult {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Inline labels                                                      */
+/* ------------------------------------------------------------------ */
+
+function computeInlineLabels(
+  calendars: CalendarInfo[],
+  laneCount: number,
+  config: LayoutConfig,
+): InlineLabel[] {
+  const gapX = hourToX(config.startHour + 0.25, config) - hourToX(config.startHour, config);
+  let labelX = hourToX(config.startHour, config) + 5;
+
+  return calendars.map((cal, i) => {
+    const charWidth = 6.5;
+    const width = Math.max(cal.name.length * charWidth + 14, 40);
+    const homeY = calendarHomeY(i, calendars.length, laneCount, config);
+    const label: InlineLabel = {
+      calIndex: i,
+      x: labelX,
+      width,
+      homeY,
+      text: cal.name,
+      color: cal.color,
+    };
+    labelX += width + gapX;
+    return label;
+  });
+}
+
+function renderInlineLabelTexts(labels: InlineLabel[]): SVGTemplateResult {
+  return svg`${labels.map((l) => svg`
+    <text x="${l.x + l.width / 2}" y="${l.homeY}"
+          text-anchor="middle"
+          dominant-baseline="central"
+          font-size="10"
+          font-weight="500"
+          fill="${l.color}"
+          pointer-events="none">
+      ${l.text}
+    </text>
+  `)}`;
+}
+
+/* ------------------------------------------------------------------ */
 /*  Calendar lines (git-branch style)                                  */
 /* ------------------------------------------------------------------ */
 
@@ -98,9 +161,11 @@ function renderCalendarLine(
   events: TimelineEvent[],
   calIndex: number,
   totalCals: number,
+  laneCount: number,
   config: LayoutConfig,
+  labels?: InlineLabel[],
 ): SVGTemplateResult {
-  const homeY = calendarHomeY(calIndex, totalCals, config);
+  const homeY = calendarHomeY(calIndex, totalCals, laneCount, config);
   const calEvents = events
     .filter((e) => e.calendarIds.includes(calendarId))
     .sort((a, b) => a.start.getTime() - b.start.getTime());
@@ -109,9 +174,61 @@ function renderCalendarLine(
   const xEnd = hourToX(config.endHour, config);
   const cr = config.curveRadius;
 
+  /* Helper: weave label gaps/bumps into a horizontal segment at homeY.
+     Advances curX from `from` towards `to`, emitting path commands for
+     any labels that fall in between. Returns new curX. */
+  function weaveLabelSegment(
+    parts: string[],
+    from: number,
+    to: number,
+  ): number {
+    let cx = from;
+    if (!labels?.length) return cx;
+
+    const sorted = labels
+      .filter((l) => l.x + l.width > cx && l.x < to)
+      .sort((a, b) => a.x - b.x);
+
+    for (const label of sorted) {
+      const lStart = Math.max(label.x, cx);
+      const lEnd = label.x + label.width;
+
+      /* draw line up to label start */
+      if (lStart > cx) {
+        parts.push(`L ${lStart} ${homeY}`);
+        cx = lStart;
+      }
+
+      if (label.calIndex === calIndex) {
+        /* OWN label: gap — start new sub-path after it */
+        cx = lEnd;
+        parts.push(`M ${cx} ${homeY}`);
+      } else {
+        /* OTHER label: smooth bump over it */
+        const bumpDir = calIndex < label.calIndex ? -1 : 1;
+        const bumpY = homeY + bumpDir * 6;
+        parts.push(
+          `C ${label.x + label.width * 0.25} ${bumpY} ${label.x + label.width * 0.75} ${bumpY} ${lEnd} ${homeY}`,
+        );
+        cx = lEnd;
+      }
+    }
+    return cx;
+  }
+
+  /* ---- no events: simple horizontal line with label weaving ---- */
   if (calEvents.length === 0) {
+    if (!labels?.length) {
+      return svg`
+        <line x1="${xStart}" y1="${homeY}" x2="${xEnd}" y2="${homeY}"
+              stroke="${color}" stroke-width="1.5" opacity="0.5" />
+      `;
+    }
+    const parts: string[] = [`M ${xStart} ${homeY}`];
+    const cx = weaveLabelSegment(parts, xStart, xEnd);
+    if (cx < xEnd) parts.push(`L ${xEnd} ${homeY}`);
     return svg`
-      <line x1="${xStart}" y1="${homeY}" x2="${xEnd}" y2="${homeY}"
+      <path d="${parts.join(" ")}" fill="none"
             stroke="${color}" stroke-width="1.5" opacity="0.5" />
     `;
   }
@@ -120,6 +237,12 @@ function renderCalendarLine(
   let curX = xStart;
   let curY = homeY;
   parts.push(`M ${curX} ${curY}`);
+
+  /* ---- weave labels before first event ---- */
+  if (labels?.length) {
+    const firstEventX = timeToX(calEvents[0].start, config);
+    curX = weaveLabelSegment(parts, curX, firstEventX);
+  }
 
   for (let i = 0; i < calEvents.length; i++) {
     const event = calEvents[i];

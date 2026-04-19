@@ -22,6 +22,7 @@ interface CardConfig {
   workStyle?: string;
   showDeclined?: boolean;
   showTentative?: boolean;
+  inlineLabels?: boolean;
   calendarA?: CalendarEntry[];
   calendarB?: CalendarEntry[];
   calendarC?: CalendarEntry[];
@@ -189,6 +190,7 @@ export class SidewaysCalendarCard extends LitElement {
       workStyle: config.workStyle as string | undefined,
       showDeclined: config.showDeclined as boolean | undefined,
       showTentative: config.showTentative as boolean | undefined,
+      inlineLabels: config.inlineLabels as boolean | undefined,
     };
     for (let i = 0; i < SidewaysCalendarCard.SLOTS.length; i++) {
       const slot = SidewaysCalendarCard.SLOTS[i];
@@ -400,9 +402,11 @@ export class SidewaysCalendarCard extends LitElement {
     const scheme = getScheme(this._config?.colorScheme);
     const calIds = this._calendars.map((c) => c.id);
     const workStyle = this._config?.workStyle || "dimmed";
+    const inlineLabels = this._config?.inlineLabels ?? false;
     const calNames = this._calendars.map((c) => c.name);
     const combos = this._calendars.length > 1
       ? allCombinations(calIds, scheme, calNames)
+          .filter((c) => !inlineLabels || c.ids.length > 1)
       : [];
 
     return html`
@@ -410,7 +414,7 @@ export class SidewaysCalendarCard extends LitElement {
         <div class="card-content">
           ${this._calendars.length === 0
             ? html`<p class="empty">No calendars configured.</p>`
-            : renderTimeline(this._events, this._calendars, this._now, undefined, scheme, workStyle)}
+            : renderTimeline(this._events, this._calendars, this._now, undefined, scheme, workStyle, inlineLabels)}
           ${combos.length > 0
             ? html`
               <div class="legend">

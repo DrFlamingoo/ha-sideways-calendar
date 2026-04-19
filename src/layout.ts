@@ -107,10 +107,15 @@ export function laneToY(lane: number, config: LayoutConfig): number {
 export function calendarHomeY(
   index: number,
   total: number,
+  laneCount: number,
   config: LayoutConfig,
 ): number {
+  const lanes = Math.max(laneCount, 1);
+  const topLane = laneToY(0, config);
+  const bottomLane = laneToY(lanes - 1, config) + config.laneHeight;
+  const centerY = (topLane + bottomLane) / 2;
   const span = (total - 1) * config.calendarLineSpacing;
-  return config.axisY - span / 2 + index * config.calendarLineSpacing;
+  return centerY - span / 2 + index * config.calendarLineSpacing;
 }
 
 /** Greedy first-fit lane assignment. */
