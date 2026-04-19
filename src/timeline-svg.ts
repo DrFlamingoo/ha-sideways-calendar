@@ -210,14 +210,15 @@ function renderEventBoxes(
     const h = config.laneHeight;
 
     const color = eventColor(event.calendarIds, calendarOrder, scheme);
-    const isWork = event.work && workStyle !== "normal";
-    const fillOpacity = isWork ? "0.07" : "0.15";
-    const dash = isWork ? "3,2" : "none";
+    const dimWork = workStyle !== "normal";
+    const isWork = !!event.work;
+    const fillOpacity = isWork && dimWork ? "0.07" : "0.15";
+    const dash = isWork && dimWork ? "3,2" : "none";
 
     /* ---- envelope event: draw outer box + nested child boxes ---- */
     if (event.envelope && event.children?.length) {
-      const childH = Math.round(h * 0.6);
-      const childY = y + Math.round((h - childH) / 2);
+      const envelopeFill = dimWork ? "0.08" : "0.15";
+      const envelopeDash = dimWork ? "none" : "none";
 
       return svg`
         <g>
@@ -227,9 +228,9 @@ function renderEventBoxes(
                 stroke="none" />
           <rect x="${x}" y="${y}" width="${w}" height="${h}"
                 rx="4" ry="4"
-                fill="${color}" fill-opacity="0.08"
+                fill="${color}" fill-opacity="${envelopeFill}"
                 stroke="${color}" stroke-width="1"
-                stroke-dasharray="none" />
+                stroke-dasharray="${envelopeDash}" />
           ${w > 40
             ? svg`
               <text x="${x + 4}" y="${y + 8}"
@@ -246,23 +247,14 @@ function renderEventBoxes(
             const cx2 = timeToX(child.end, config);
             const cw = Math.max(cx2 - cx, 3);
             const childColor = eventColor(child.calendarIds.length ? child.calendarIds : event.calendarIds, calendarOrder, scheme);
+            const childFill = dimWork ? "0.14" : "0.30";
+            const childDash = dimWork ? "3,2" : "none";
             return svg`
-              <rect x="${cx}" y="${childY}" width="${cw}" height="${childH}"
+              <rect x="${cx}" y="${y}" width="${cw}" height="${h}"
                     rx="3" ry="3"
-                    fill="${childColor}" fill-opacity="0.18"
+                    fill="${childColor}" fill-opacity="${childFill}"
                     stroke="${childColor}" stroke-width="0.75"
-                    stroke-dasharray="3,2" />
-              ${cw > 30
-                ? svg`
-                  <text x="${cx + 3}" y="${childY + childH / 2}"
-                        dominant-baseline="central"
-                        font-size="8"
-                        fill="var(--primary-text-color, #333)"
-                        pointer-events="none"
-                        opacity="0.7">
-                    ${child.title}
-                  </text>`
-                : nothing}
+                    stroke-dasharray="${childDash}" />
             `;
           })}
         </g>
@@ -280,14 +272,13 @@ function renderEventBoxes(
               fill="${color}" fill-opacity="${fillOpacity}"
               stroke="${color}" stroke-width="1"
               stroke-dasharray="${dash}" />
-        ${w > 40
+        ${!isWork && w > 40
           ? svg`
             <text x="${x + 4}" y="${y + h / 2}"
                   dominant-baseline="central"
                   font-size="10"
                   fill="var(--primary-text-color, #333)"
-                  pointer-events="none"
-                  opacity="${isWork ? 0.6 : 1}">
+                  pointer-events="none">
               ${event.title}
             </text>`
           : nothing}
