@@ -17,6 +17,14 @@ interface CardConfig {
   emailB?: string;
   emailC?: string;
   emailD?: string;
+  nameA?: string;
+  nameB?: string;
+  nameC?: string;
+  nameD?: string;
+  personA?: string;
+  personB?: string;
+  personC?: string;
+  personD?: string;
 }
 
 interface HassEntity {
@@ -46,6 +54,8 @@ export class SidewaysCalendarCardEditor extends LitElement {
   }
 
   private static readonly EMAIL_KEYS = ["emailA", "emailB", "emailC", "emailD"] as const;
+  private static readonly NAME_KEYS = ["nameA", "nameB", "nameC", "nameD"] as const;
+  private static readonly PERSON_KEYS = ["personA", "personB", "personC", "personD"] as const;
 
   setConfig(config: Record<string, unknown>) {
     const normalized: CardConfig = {
@@ -62,6 +72,10 @@ export class SidewaysCalendarCardEditor extends LitElement {
       if (val) normalized[SLOTS[i]] = val;
       const email = config[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] as string | undefined;
       if (email) normalized[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] = email;
+      const name = config[SidewaysCalendarCardEditor.NAME_KEYS[i]] as string | undefined;
+      if (name) normalized[SidewaysCalendarCardEditor.NAME_KEYS[i]] = name;
+      const person = config[SidewaysCalendarCardEditor.PERSON_KEYS[i]] as string | undefined;
+      if (person) normalized[SidewaysCalendarCardEditor.PERSON_KEYS[i]] = person;
     }
     this._config = normalized;
   }
@@ -132,6 +146,37 @@ export class SidewaysCalendarCardEditor extends LitElement {
     }
     this._config = cfg;
     this._fireChange();
+  }
+
+  private _nameChanged(slotIndex: number, value: string) {
+    const key = SidewaysCalendarCardEditor.NAME_KEYS[slotIndex];
+    const cfg = { ...this._config };
+    if (value) {
+      cfg[key] = value;
+    } else {
+      delete cfg[key];
+    }
+    this._config = cfg;
+    this._fireChange();
+  }
+
+  private _personChanged(slotIndex: number, value: string) {
+    const key = SidewaysCalendarCardEditor.PERSON_KEYS[slotIndex];
+    const cfg = { ...this._config };
+    if (value) {
+      cfg[key] = value;
+    } else {
+      delete cfg[key];
+    }
+    this._config = cfg;
+    this._fireChange();
+  }
+
+  private _getPersonEntities(): string[] {
+    if (!this._hass) return [];
+    return Object.keys(this._hass.states)
+      .filter((e) => e.startsWith("person."))
+      .sort();
   }
 
   private _toggleWork(slot: typeof SLOTS[number], index: number) {
@@ -220,7 +265,9 @@ export class SidewaysCalendarCardEditor extends LitElement {
         </div>
 
         ${SLOTS.map((slot, i) => {
-          const label = SLOT_LABELS[i];
+          const fallbackLabel = SLOT_LABELS[i];
+          const customName = this._config?.[SidewaysCalendarCardEditor.NAME_KEYS[i]];
+          const displayName = customName || `Calendar ${fallbackLabel}`;
           const color = calendarColor(i, scheme);
           const entries = this._config?.[slot] || [];
           const expanded = this._expandedSlot === i;
@@ -237,7 +284,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
               >
                 <span class="color-dot" style="background:${color}"></span>
                 <span class="slot-title">
-                  Calendar ${label}
+                  ${displayName}
                   ${entries.length > 0
                     ? html` — <em>${summary}</em>`
                     : html` <span class="unset">${summary}</span>`}
@@ -249,6 +296,31 @@ export class SidewaysCalendarCardEditor extends LitElement {
               ${expanded
                 ? html`
                     <div class="section-content column">
+                      <label class="field-label">Name</label>
+                      <input
+                        type="text"
+                        class="email-input"
+                        placeholder="e.g. Alice, Bob…"
+                        .value=${this._config?.[SidewaysCalendarCardEditor.NAME_KEYS[i]] || ""}
+                        @change=${(e: Event) =>
+                          this._nameChanged(i, (e.target as HTMLInputElement).value.trim())}
+                      />
+                      <label class="field-label">Person entity</label>
+                      <select
+                        .value=${this._config?.[SidewaysCalendarCardEditor.PERSON_KEYS[i]] || ""}
+                        @change=${(e: Event) =>
+                          this._personChanged(i, (e.target as HTMLSelectElement).value)}
+                      >
+                        <option value="">— None —</option>
+                        ${this._getPersonEntities().map(
+                          (eid) => html`
+                            <option value=${eid}
+                              ?selected=${eid === (this._config?.[SidewaysCalendarCardEditor.PERSON_KEYS[i]] || "")}>
+                              ${this._friendlyName(eid)}
+                            </option>
+                          `,
+                        )}
+                      </select>
                       ${entries.length > 0
                         ? html`
                             <div class="entity-list">

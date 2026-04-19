@@ -229,10 +229,11 @@ export function eventColor(
 export function allCombinations(
   calendarIds: string[],
   scheme: ColorScheme,
+  calendarNames?: string[],
 ): Array<{ label: string; ids: string[]; color: string }> {
   const n = calendarIds.length;
   const results: Array<{ label: string; ids: string[]; color: string }> = [];
-  const labels = ["A", "B", "C", "D"];
+  const labels = calendarNames || ["A", "B", "C", "D"];
 
   for (let mask = 1; mask < 1 << n; mask++) {
     const ids: string[] = [];
@@ -240,7 +241,7 @@ export function allCombinations(
     for (let i = 0; i < n; i++) {
       if (mask & (1 << i)) {
         ids.push(calendarIds[i]);
-        label += labels[i] || `${i}`;
+        label += (label ? " + " : "") + (labels[i] || `${i}`);
       }
     }
     results.push({

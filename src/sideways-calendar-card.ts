@@ -30,6 +30,14 @@ interface CardConfig {
   emailB?: string;
   emailC?: string;
   emailD?: string;
+  nameA?: string;
+  nameB?: string;
+  nameC?: string;
+  nameD?: string;
+  personA?: string;
+  personB?: string;
+  personC?: string;
+  personD?: string;
 }
 
 interface HACalendarEventTime {
@@ -88,6 +96,8 @@ export class SidewaysCalendarCard extends LitElement {
   ] as const;
 
   private static readonly SLOT_LABELS = ["A", "B", "C", "D"];
+  private static readonly NAME_KEYS = ["nameA", "nameB", "nameC", "nameD"] as const;
+  private static readonly PERSON_KEYS = ["personA", "personB", "personC", "personD"] as const;
 
   /** Build a map from entity_id → slot key for all configured entities. */
   private _entityToSlot(): Map<string, string> {
@@ -188,6 +198,10 @@ export class SidewaysCalendarCard extends LitElement {
       if (val) normalized[slot] = val;
       const email = config[SidewaysCalendarCard.EMAIL_KEYS[i]] as string | undefined;
       if (email) normalized[SidewaysCalendarCard.EMAIL_KEYS[i]] = email;
+      const name = config[SidewaysCalendarCard.NAME_KEYS[i]] as string | undefined;
+      if (name) normalized[SidewaysCalendarCard.NAME_KEYS[i]] = name;
+      const person = config[SidewaysCalendarCard.PERSON_KEYS[i]] as string | undefined;
+      if (person) normalized[SidewaysCalendarCard.PERSON_KEYS[i]] = person;
     }
     this._config = normalized;
     this._lastFetchKey = "";
@@ -222,13 +236,15 @@ export class SidewaysCalendarCard extends LitElement {
     const scheme = getScheme(this._config?.colorScheme);
     const active = this._activeSlots();
     this._calendars = active.map((slot, i) => {
+      const slotIdx = SidewaysCalendarCard.SLOTS.indexOf(slot);
+      const customName = this._config?.[SidewaysCalendarCard.NAME_KEYS[slotIdx]];
       const entries = this._config[slot]!;
-      const firstName =
+      const fallbackName =
         (this._hass?.states[entries[0].entity]?.attributes
           ?.friendly_name as string) || entries[0].entity;
       return {
         id: slot,
-        name: firstName,
+        name: customName || fallbackName,
         color: calendarColor(i, scheme),
       };
     });
@@ -384,8 +400,9 @@ export class SidewaysCalendarCard extends LitElement {
     const scheme = getScheme(this._config?.colorScheme);
     const calIds = this._calendars.map((c) => c.id);
     const workStyle = this._config?.workStyle || "dimmed";
+    const calNames = this._calendars.map((c) => c.name);
     const combos = this._calendars.length > 1
-      ? allCombinations(calIds, scheme)
+      ? allCombinations(calIds, scheme, calNames)
       : [];
 
     return html`
