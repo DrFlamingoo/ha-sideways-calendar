@@ -13,6 +13,7 @@ import {
   getLaneCount,
   computeHeight,
 } from "./layout.js";
+import { ColorScheme, eventColor, getScheme } from "./colors.js";
 
 /* ------------------------------------------------------------------ */
 /*  Public entry point                                                 */
@@ -23,7 +24,10 @@ export function renderTimeline(
   calendars: CalendarInfo[],
   now: Date,
   config: LayoutConfig = DEFAULT_CONFIG,
+  scheme?: ColorScheme,
 ): SVGTemplateResult {
+  const cs = scheme || getScheme();
+  const calIds = calendars.map((c) => c.entityId);
   const laneCount = getLaneCount(events);
   const height = computeHeight(laneCount, config);
 
@@ -38,7 +42,7 @@ export function renderTimeline(
           cal.entityId, cal.color, events, i, calendars.length, config,
         ),
       )}
-      ${renderEventBoxes(events, calendars, config)}
+      ${renderEventBoxes(events, calendars, calIds, cs, config)}
       ${renderNowMarker(now, height, config)}
     </svg>
   `;
@@ -191,10 +195,10 @@ function renderCalendarLine(
 function renderEventBoxes(
   events: TimelineEvent[],
   calendars: CalendarInfo[],
+  calendarOrder: string[],
+  scheme: ColorScheme,
   config: LayoutConfig,
 ): SVGTemplateResult {
-  const calMap = new Map(calendars.map((c) => [c.entityId, c]));
-
   return svg`${events.map((event) => {
     const x = timeToX(event.start, config);
     const x2 = timeToX(event.end, config);
@@ -202,8 +206,7 @@ function renderEventBoxes(
     const w = Math.max(x2 - x, 4);
     const h = config.laneHeight;
 
-    const cal = calMap.get(event.calendarIds[0]);
-    const color = cal?.color || "#888";
+    const color = eventColor(event.calendarIds, calendarOrder, scheme);
 
     return svg`
       <g>

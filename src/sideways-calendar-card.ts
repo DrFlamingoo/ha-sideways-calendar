@@ -5,13 +5,23 @@ import {
   RawEvent,
   TimelineEvent,
   CalendarInfo,
-  CALENDAR_COLORS,
   assignLanes,
 } from "./layout.js";
+import {
+  ColorScheme,
+  COLOR_SCHEMES,
+  getScheme,
+  calendarColor,
+  allCombinations,
+} from "./colors.js";
 
 interface CardConfig {
   type: string;
-  calendars?: string[];
+  colorScheme?: string;
+  calendarA?: string;
+  calendarB?: string;
+  calendarC?: string;
+  calendarD?: string;
 }
 
 interface HACalendarEventTime {
@@ -54,6 +64,21 @@ export class SidewaysCalendarCard extends LitElement {
   private _hass?: Hass;
   private _lastFetchKey = "";
   private _timer?: number;
+
+  private static readonly SLOTS = [
+    "calendarA",
+    "calendarB",
+    "calendarC",
+    "calendarD",
+  ] as const;
+
+  private static readonly SLOT_LABELS = ["A", "B", "C", "D"];
+
+  private _getCalendarIds(): string[] {
+    return SidewaysCalendarCard.SLOTS
+      .map((key) => this._config?.[key])
+      .filter((v): v is string => !!v);
+  }
 
   set hass(hass: Hass) {
     this._hass = hass;
@@ -99,27 +124,86 @@ export class SidewaysCalendarCard extends LitElement {
     const calendars = Object.keys(hass.states).filter((e) =>
       e.startsWith("calendar.")
     );
-    return { calendars: calendars.slice(0, 5) };
+    return {
+      calendarA: calendars[0],
+      calendarB: calendars[1],
+      calendarC: calendars[2],
+      calendarD: calendars[3],
+    };
   }
 
   static getConfigForm() {
+    const schemeOptions = Object.values(COLOR_SCHEMES).map((s) => ({
+      value: s.name,
+      label: s.label,
+    }));
+
     return {
       schema: [
         {
-          name: "calendars",
-          selector: {
-            entity: {
-              domain: "calendar",
-              multiple: true,
+          type: "expandable",
+          title: "General",
+          icon: "mdi:cog",
+          schema: [
+            {
+              name: "colorScheme",
+              selector: {
+                select: { options: schemeOptions },
+              },
             },
-          },
+          ],
+        },
+        {
+          type: "expandable",
+          title: "Calendar A \u25CF",
+          icon: "mdi:calendar",
+          schema: [
+            {
+              name: "calendarA",
+              selector: { entity: { domain: "calendar" } },
+            },
+          ],
+        },
+        {
+          type: "expandable",
+          title: "Calendar B \u25CF",
+          icon: "mdi:calendar",
+          schema: [
+            {
+              name: "calendarB",
+              selector: { entity: { domain: "calendar" } },
+            },
+          ],
+        },
+        {
+          type: "expandable",
+          title: "Calendar C \u25CF",
+          icon: "mdi:calendar",
+          schema: [
+            {
+              name: "calendarC",
+              selector: { entity: { domain: "calendar" } },
+            },
+          ],
+        },
+        {
+          type: "expandable",
+          title: "Calendar D \u25CF",
+          icon: "mdi:calendar",
+          schema: [
+            {
+              name: "calendarD",
+              selector: { entity: { domain: "calendar" } },
+            },
+          ],
         },
       ],
     };
   }
 
   private _buildCalendarInfos() {
-    const calIds = this._config?.calendars || [];
+    const calIds = this._getCalendarIds();
+    const scheme = getScheme(this._config?.colorScheme);
     this._calendars = calIds.map((entityId, i) => {
       const name =
         (this._hass?.states[entityId]?.attributes?.friendly_name as string) ||
@@ -127,7 +211,7 @@ export class SidewaysCalendarCard extends LitElement {
       return {
         entityId,
         name,
-        color: CALENDAR_COLORS[i % CALENDAR_COLORS.length],
+        color: calendarColor(i, scheme),
       };
     });
   }
@@ -135,7 +219,7 @@ export class SidewaysCalendarCard extends LitElement {
   private _tryFetchEvents() {
     if (!this._hass || !this._config) return;
     const today = new Date().toISOString().split("T")[0];
-    const cals = (this._config.calendars || []).slice().sort().join(",");
+    const cals = this._getCalendarIds().join(",");
     const key = `${today}|${cals}`;
     if (key === this._lastFetchKey) return;
     this._lastFetchKey = key;
@@ -145,7 +229,7 @@ export class SidewaysCalendarCard extends LitElement {
 
   private async _fetchEvents() {
     const hass = this._hass!;
-    const calIds = this._config.calendars || [];
+    const calIds = this._getCalendarIds();
     if (calIds.length === 0) {
       this._events = [];
       return;
@@ -211,13 +295,31 @@ export class SidewaysCalendarCard extends LitElement {
 
   render() {
     const userName = this._hass?.user?.name || "User";
+    const scheme = getScheme(this._config?.colorScheme);
+    const calIds = this._calendars.map((c) => c.entityId);
+    const combos = this._calendars.length > 1
+      ? allCombinations(calIds, scheme)
+      : [];
 
     return html`
       <ha-card header="${userName}'s Calendar">
         <div class="card-content">
           ${this._calendars.length === 0
             ? html`<p class="empty">No calendars configured.</p>`
-            : renderTimeline(this._events, this._calendars, this._now)}
+            : renderTimeline(this._events, this._calendars, this._now, undefined, scheme)}
+          ${combos.length > 0
+            ? html`
+              <div class="legend">
+                ${combos.map(
+                  (c) => html`
+                    <span class="legend-item">
+                      <span class="legend-swatch" style="background:${c.color}"></span>
+                      ${c.label}
+                    </span>
+                  `,
+                )}
+              </div>`
+            : ""}
         </div>
       </ha-card>
     `;
@@ -239,6 +341,25 @@ export class SidewaysCalendarCard extends LitElement {
     .empty {
       color: var(--secondary-text-color);
       font-style: italic;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px 12px;
+      padding-top: 8px;
+      font-size: 11px;
+      color: var(--secondary-text-color);
+    }
+    .legend-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .legend-swatch {
+      display: inline-block;
+      width: 12px;
+      height: 12px;
+      border-radius: 2px;
     }
   `;
 }
