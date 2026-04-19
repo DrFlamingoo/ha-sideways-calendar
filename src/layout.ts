@@ -20,10 +20,15 @@ export interface RawEvent {
   title: string;
   calendarIds: string[];
   work?: boolean;
+  /** This event is a "work.*" placeholder that envelopes work-calendar events. */
+  envelope?: boolean;
+  /** Work-calendar events nested inside an envelope. */
+  children?: RawEvent[];
 }
 
 export interface TimelineEvent extends RawEvent {
   lane: number;
+  children?: RawEvent[];
 }
 
 export interface CalendarInfo {

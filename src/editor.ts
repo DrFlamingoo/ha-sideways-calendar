@@ -7,10 +7,16 @@ interface CardConfig {
   type: string;
   colorScheme?: string;
   workStyle?: string;
+  showDeclined?: boolean;
+  showTentative?: boolean;
   calendarA?: CalendarEntry[];
   calendarB?: CalendarEntry[];
   calendarC?: CalendarEntry[];
   calendarD?: CalendarEntry[];
+  emailA?: string;
+  emailB?: string;
+  emailC?: string;
+  emailD?: string;
 }
 
 interface HassEntity {
@@ -39,17 +45,23 @@ export class SidewaysCalendarCardEditor extends LitElement {
     this._hass = hass;
   }
 
+  private static readonly EMAIL_KEYS = ["emailA", "emailB", "emailC", "emailD"] as const;
+
   setConfig(config: Record<string, unknown>) {
     const normalized: CardConfig = {
       type: config.type as string,
       colorScheme: config.colorScheme as string | undefined,
       workStyle: config.workStyle as string | undefined,
+      showDeclined: config.showDeclined as boolean | undefined,
+      showTentative: config.showTentative as boolean | undefined,
     };
-    for (const slot of SLOTS) {
+    for (let i = 0; i < SLOTS.length; i++) {
       const val = normalizeSlotValue(
-        config[slot] as string | CalendarEntry[] | undefined,
+        config[SLOTS[i]] as string | CalendarEntry[] | undefined,
       );
-      if (val) normalized[slot] = val;
+      if (val) normalized[SLOTS[i]] = val;
+      const email = config[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] as string | undefined;
+      if (email) normalized[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] = email;
     }
     this._config = normalized;
   }
@@ -76,6 +88,16 @@ export class SidewaysCalendarCardEditor extends LitElement {
     this._fireChange();
   }
 
+  private _toggleShowDeclined() {
+    this._config = { ...this._config, showDeclined: !(this._config.showDeclined ?? false) };
+    this._fireChange();
+  }
+
+  private _toggleShowTentative() {
+    this._config = { ...this._config, showTentative: !(this._config.showTentative ?? true) };
+    this._fireChange();
+  }
+
   private _addEntity(slot: typeof SLOTS[number], entityId: string) {
     if (!entityId) return;
     const current = this._config[slot] || [];
@@ -95,6 +117,18 @@ export class SidewaysCalendarCardEditor extends LitElement {
       delete cfg[slot];
     } else {
       cfg[slot] = updated;
+    }
+    this._config = cfg;
+    this._fireChange();
+  }
+
+  private _emailChanged(slotIndex: number, value: string) {
+    const key = SidewaysCalendarCardEditor.EMAIL_KEYS[slotIndex];
+    const cfg = { ...this._config };
+    if (value) {
+      cfg[key] = value;
+    } else {
+      delete cfg[key];
     }
     this._config = cfg;
     this._fireChange();
@@ -165,6 +199,23 @@ export class SidewaysCalendarCardEditor extends LitElement {
                 `,
               )}
             </select>
+            <label class="field-label">Attendance</label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                .checked=${this._config?.showTentative ?? true}
+                @change=${this._toggleShowTentative}
+              />
+              Show tentative events
+            </label>
+            <label class="toggle-row">
+              <input
+                type="checkbox"
+                .checked=${this._config?.showDeclined ?? false}
+                @change=${this._toggleShowDeclined}
+              />
+              Show declined events
+            </label>
           </div>
         </div>
 
@@ -249,6 +300,15 @@ export class SidewaysCalendarCardEditor extends LitElement {
                             `,
                           )}
                       </select>
+                      <label class="field-label">Owner email (for attendance filtering)</label>
+                      <input
+                        type="email"
+                        class="email-input"
+                        placeholder="user@example.com"
+                        .value=${this._config?.[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] || ""}
+                        @change=${(e: Event) =>
+                          this._emailChanged(i, (e.target as HTMLInputElement).value.trim())}
+                      />
                     </div>
                   `
                 : ""}
@@ -322,6 +382,17 @@ export class SidewaysCalendarCardEditor extends LitElement {
       color: var(--secondary-text-color);
       margin-bottom: -4px;
     }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--primary-text-color);
+      cursor: pointer;
+    }
+    .toggle-row input {
+      cursor: pointer;
+    }
     select {
       padding: 8px;
       border: 1px solid var(--divider-color, #ccc);
@@ -329,6 +400,14 @@ export class SidewaysCalendarCardEditor extends LitElement {
       background: var(--card-background-color, #fff);
       color: var(--primary-text-color);
       font-size: 14px;
+    }
+    .email-input {
+      padding: 8px;
+      border: 1px solid var(--divider-color, #ccc);
+      border-radius: 4px;
+      background: var(--card-background-color, #fff);
+      color: var(--primary-text-color);
+      font-size: 13px;
     }
     .entity-list {
       display: flex;
