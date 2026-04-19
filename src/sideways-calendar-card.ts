@@ -12,7 +12,7 @@ import {
 import {
   getScheme,
   calendarColor,
-  allCombinations,
+  eventColor,
 } from "./colors.js";
 import "./editor.js";
 
@@ -100,14 +100,16 @@ export class SidewaysCalendarCard extends LitElement {
   private static readonly NAME_KEYS = ["nameA", "nameB", "nameC", "nameD"] as const;
   private static readonly PERSON_KEYS = ["personA", "personB", "personC", "personD"] as const;
 
-  /** Build a map from entity_id → slot key for all configured entities. */
-  private _entityToSlot(): Map<string, string> {
-    const map = new Map<string, string>();
+  /** Build a map from entity_id → slot keys (one entity may appear in multiple slots). */
+  private _entityToSlots(): Map<string, string[]> {
+    const map = new Map<string, string[]>();
     for (const slot of SidewaysCalendarCard.SLOTS) {
       const entries = this._config?.[slot];
       if (!entries) continue;
       for (const e of entries) {
-        map.set(e.entity, slot);
+        const arr = map.get(e.entity);
+        if (arr) { if (!arr.includes(slot)) arr.push(slot); }
+        else map.set(e.entity, [slot]);
       }
     }
     return map;
@@ -271,7 +273,7 @@ export class SidewaysCalendarCard extends LitElement {
       return;
     }
 
-    const entityToSlot = this._entityToSlot();
+    const entityToSlots = this._entityToSlots();
     const slotToEmail = this._slotToEmail();
     const workEntities = this._workEntities();
     const showDeclined = this._config?.showDeclined ?? false;
@@ -289,8 +291,8 @@ export class SidewaysCalendarCard extends LitElement {
 
     await Promise.all(
       entityIds.map(async (entityId) => {
-        const slotId = entityToSlot.get(entityId);
-        if (!slotId) return;
+        const slotIds = entityToSlots.get(entityId);
+        if (!slotIds?.length) return;
         const isWork = workEntities.has(entityId);
         try {
           const haEvents = await hass.callApi<HACalendarEvent[]>(
@@ -298,18 +300,6 @@ export class SidewaysCalendarCard extends LitElement {
             `calendars/${entityId}?start=${start}&end=${end}`,
           );
           for (const e of haEvents) {
-            /* ---- attendance filter by owner email ---- */
-            const ownerEmail = slotToEmail.get(slotId);
-            if (e.attendees?.length && ownerEmail) {
-              const self = e.attendees.find(
-                (a) => a.email?.toLowerCase() === ownerEmail,
-              );
-              if (self) {
-                if (self.response === "declined" && !showDeclined) continue;
-                if (self.response === "tentative" && !showTentative) continue;
-              }
-            }
-
             const eStart = parseEventTime(e.start, startOfDay);
             const eEnd = parseEventTime(e.end, endOfDay);
             const clampedStart = new Date(
@@ -318,18 +308,34 @@ export class SidewaysCalendarCard extends LitElement {
             const clampedEnd = new Date(
               Math.min(eEnd.getTime(), endOfDay.getTime()),
             );
-            const raw: RawEvent = {
-              id: `${slotId}|${e.summary}|${eStart.toISOString()}`,
-              start: clampedStart,
-              end: clampedEnd,
-              title: e.summary,
-              calendarIds: [slotId],
-              work: isWork,
-            };
 
-            const bucket = isWork ? slotWork : slotPersonal;
-            if (!bucket.has(slotId)) bucket.set(slotId, []);
-            bucket.get(slotId)!.push(raw);
+            /* Fan out to every slot that references this entity */
+            for (const slotId of slotIds) {
+              /* ---- attendance filter by owner email ---- */
+              const ownerEmail = slotToEmail.get(slotId);
+              if (e.attendees?.length && ownerEmail) {
+                const self = e.attendees.find(
+                  (a) => a.email?.toLowerCase() === ownerEmail,
+                );
+                if (self) {
+                  if (self.response === "declined" && !showDeclined) continue;
+                  if (self.response === "tentative" && !showTentative) continue;
+                }
+              }
+
+              const raw: RawEvent = {
+                id: `${slotId}|${e.summary}|${eStart.toISOString()}`,
+                start: clampedStart,
+                end: clampedEnd,
+                title: e.summary,
+                calendarIds: [slotId],
+                work: isWork,
+              };
+
+              const bucket = isWork ? slotWork : slotPersonal;
+              if (!bucket.has(slotId)) bucket.set(slotId, []);
+              bucket.get(slotId)!.push(raw);
+            }
           }
         } catch (err) {
           console.error(`Failed to fetch events for ${entityId}:`, err);
@@ -371,7 +377,7 @@ export class SidewaysCalendarCard extends LitElement {
     const roundMin = (d: Date) => Math.round(d.getTime() / 60_000);
     const mergeMap = new Map<string, RawEvent>();
     for (const event of allEvents) {
-      const key = `${event.title}|${roundMin(event.start)}|${roundMin(event.end)}`;
+      const key = `${event.title.trim()}|${roundMin(event.start)}|${roundMin(event.end)}`;
       const existing = mergeMap.get(key);
       if (existing) {
         for (const cid of event.calendarIds) {
@@ -381,13 +387,29 @@ export class SidewaysCalendarCard extends LitElement {
         }
         /* work only if ALL sources are work */
         if (!event.work) existing.work = false;
-        /* merge children from envelope events */
+        /* merge children from envelope events (de-duplicate by title+time) */
         if (event.envelope) {
           existing.envelope = true;
-          existing.children = [
-            ...(existing.children || []),
-            ...(event.children || []),
-          ];
+          const prev = existing.children || [];
+          const prevKeys = new Set(
+            prev.map((c) => `${c.title}|${roundMin(c.start)}|${roundMin(c.end)}`),
+          );
+          for (const child of event.children || []) {
+            const ck = `${child.title}|${roundMin(child.start)}|${roundMin(child.end)}`;
+            const dup = prev.find(
+              (c) => `${c.title}|${roundMin(c.start)}|${roundMin(c.end)}` === ck,
+            );
+            if (dup) {
+              /* merge calendarIds into existing child */
+              for (const cid of child.calendarIds) {
+                if (!dup.calendarIds.includes(cid)) dup.calendarIds.push(cid);
+              }
+            } else {
+              prev.push(child);
+              prevKeys.add(ck);
+            }
+          }
+          existing.children = prev;
         }
       } else {
         mergeMap.set(key, event);
@@ -404,10 +426,29 @@ export class SidewaysCalendarCard extends LitElement {
     const workStyle = this._config?.workStyle || "dimmed";
     const inlineLabels = this._config?.inlineLabels ?? false;
     const calNames = this._calendars.map((c) => c.name);
-    const combos = this._calendars.length > 1
-      ? allCombinations(calIds, scheme, calNames)
-          .filter((c) => !inlineLabels || c.ids.length > 1)
-      : [];
+
+    /* Build legend only from calendarId combos that actually appear in events */
+    const combos: Array<{ label: string; ids: string[]; color: string }> = [];
+    if (this._calendars.length > 1) {
+      const seen = new Set<string>();
+      for (const ev of this._events) {
+        if (ev.calendarIds.length < 2) continue;
+        const key = [...ev.calendarIds].sort().join("|");
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const label = ev.calendarIds
+          .map((id) => {
+            const idx = calIds.indexOf(id);
+            return idx >= 0 ? calNames[idx] : id;
+          })
+          .join(" + ");
+        combos.push({
+          label,
+          ids: ev.calendarIds,
+          color: eventColor(ev.calendarIds, calIds, scheme),
+        });
+      }
+    }
 
     return html`
       <ha-card header="${userName}'s Calendar">
