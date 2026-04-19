@@ -1,6 +1,6 @@
 {
   "name": "ha-sideways-calendar",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "A Home Assistant card that shows calendar event counts for today.",
   "main": "dist/sideways-calendar-card.js",
   "scripts": {

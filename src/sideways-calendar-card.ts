@@ -200,7 +200,7 @@ export class SidewaysCalendarCard extends LitElement {
   }
 
   getGridOptions() {
-    return { rows: 3, columns: 12, min_rows: 2, min_columns: 6 };
+    return { rows: "auto", columns: "full", min_rows: 2, min_columns: 6 };
   }
 
   static getStubConfig(hass: Hass) {
