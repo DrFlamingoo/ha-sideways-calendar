@@ -37,13 +37,14 @@ export function renderTimeline(
          xmlns="http://www.w3.org/2000/svg"
          style="width:100%;display:block">
       ${renderAxis(config)}
+      ${renderNowLine(now, height, config)}
       ${calendars.map((cal, i) =>
         renderCalendarLine(
           cal.entityId, cal.color, events, i, calendars.length, config,
         ),
       )}
       ${renderEventBoxes(events, calendars, calIds, cs, config)}
-      ${renderNowMarker(now, height, config)}
+      ${renderNowDot(now, config)}
     </svg>
   `;
 }
@@ -237,7 +238,7 @@ function renderEventBoxes(
 /*  Current-time marker                                                */
 /* ------------------------------------------------------------------ */
 
-function renderNowMarker(
+function renderNowLine(
   now: Date,
   height: number,
   config: LayoutConfig,
@@ -250,6 +251,18 @@ function renderNowMarker(
     <line x1="${x}" y1="0" x2="${x}" y2="${height}"
           stroke="var(--primary-color, #03a9f4)"
           stroke-width="1.5" opacity="0.6" />
+  `;
+}
+
+function renderNowDot(
+  now: Date,
+  config: LayoutConfig,
+): SVGTemplateResult {
+  const hours = now.getHours() + now.getMinutes() / 60;
+  if (hours < config.startHour || hours > config.endHour) return svg``;
+
+  const x = timeToX(now, config);
+  return svg`
     <circle cx="${x}" cy="${config.axisY}" r="3"
             fill="var(--primary-color, #03a9f4)" />
   `;

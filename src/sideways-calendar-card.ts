@@ -8,12 +8,11 @@ import {
   assignLanes,
 } from "./layout.js";
 import {
-  ColorScheme,
-  COLOR_SCHEMES,
   getScheme,
   calendarColor,
   allCombinations,
 } from "./colors.js";
+import "./editor.js";
 
 interface CardConfig {
   type: string;
@@ -132,73 +131,8 @@ export class SidewaysCalendarCard extends LitElement {
     };
   }
 
-  static getConfigForm() {
-    const schemeOptions = Object.values(COLOR_SCHEMES).map((s) => ({
-      value: s.name,
-      label: s.label,
-    }));
-
-    return {
-      schema: [
-        {
-          type: "expandable",
-          title: "General",
-          icon: "mdi:cog",
-          schema: [
-            {
-              name: "colorScheme",
-              selector: {
-                select: { options: schemeOptions },
-              },
-            },
-          ],
-        },
-        {
-          type: "expandable",
-          title: "Calendar A \u25CF",
-          icon: "mdi:calendar",
-          schema: [
-            {
-              name: "calendarA",
-              selector: { entity: { domain: "calendar" } },
-            },
-          ],
-        },
-        {
-          type: "expandable",
-          title: "Calendar B \u25CF",
-          icon: "mdi:calendar",
-          schema: [
-            {
-              name: "calendarB",
-              selector: { entity: { domain: "calendar" } },
-            },
-          ],
-        },
-        {
-          type: "expandable",
-          title: "Calendar C \u25CF",
-          icon: "mdi:calendar",
-          schema: [
-            {
-              name: "calendarC",
-              selector: { entity: { domain: "calendar" } },
-            },
-          ],
-        },
-        {
-          type: "expandable",
-          title: "Calendar D \u25CF",
-          icon: "mdi:calendar",
-          schema: [
-            {
-              name: "calendarD",
-              selector: { entity: { domain: "calendar" } },
-            },
-          ],
-        },
-      ],
-    };
+  static getConfigElement() {
+    return document.createElement("sideways-calendar-card-editor");
   }
 
   private _buildCalendarInfos() {
