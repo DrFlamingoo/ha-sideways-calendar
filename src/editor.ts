@@ -1,44 +1,17 @@
 import { LitElement, html, css } from "lit";
 import { customElement, state } from "lit/decorators.js";
 import { COLOR_SCHEMES, getScheme, calendarColor } from "./colors.js";
-import { CalendarEntry, normalizeSlotValue } from "./layout.js";
-
-interface CardConfig {
-  type: string;
-  colorScheme?: string;
-  workStyle?: string;
-  showDeclined?: boolean;
-  showTentative?: boolean;
-  inlineLabels?: boolean;
-  calendarA?: CalendarEntry[];
-  calendarB?: CalendarEntry[];
-  calendarC?: CalendarEntry[];
-  calendarD?: CalendarEntry[];
-  emailA?: string;
-  emailB?: string;
-  emailC?: string;
-  emailD?: string;
-  nameA?: string;
-  nameB?: string;
-  nameC?: string;
-  nameD?: string;
-  personA?: string;
-  personB?: string;
-  personC?: string;
-  personD?: string;
-}
-
-interface HassEntity {
-  entity_id: string;
-  attributes: Record<string, unknown>;
-}
-
-interface Hass {
-  states: Record<string, HassEntity>;
-}
-
-const SLOTS = ["calendarA", "calendarB", "calendarC", "calendarD"] as const;
-const SLOT_LABELS = ["A", "B", "C", "D"];
+import { CalendarEntry } from "./layout.js";
+import {
+  CardConfig,
+  EditorHass,
+  SLOTS,
+  SLOT_LABELS,
+  EMAIL_KEYS,
+  NAME_KEYS,
+  PERSON_KEYS,
+  normalizeConfig,
+} from "./types.js";
 const WORK_STYLES = [
   { value: "dimmed", label: "Dimmed (dashed border, lower opacity)" },
   { value: "normal", label: "No distinction" },
@@ -47,39 +20,15 @@ const WORK_STYLES = [
 @customElement("sideways-calendar-card-editor")
 export class SidewaysCalendarCardEditor extends LitElement {
   @state() private _config!: CardConfig;
-  @state() private _hass?: Hass;
+  @state() private _hass?: EditorHass;
   @state() private _expandedSlot: number | null = null;
 
-  set hass(hass: Hass) {
+  set hass(hass: EditorHass) {
     this._hass = hass;
   }
 
-  private static readonly EMAIL_KEYS = ["emailA", "emailB", "emailC", "emailD"] as const;
-  private static readonly NAME_KEYS = ["nameA", "nameB", "nameC", "nameD"] as const;
-  private static readonly PERSON_KEYS = ["personA", "personB", "personC", "personD"] as const;
-
   setConfig(config: Record<string, unknown>) {
-    const normalized: CardConfig = {
-      type: config.type as string,
-      colorScheme: config.colorScheme as string | undefined,
-      workStyle: config.workStyle as string | undefined,
-      showDeclined: config.showDeclined as boolean | undefined,
-      showTentative: config.showTentative as boolean | undefined,
-      inlineLabels: config.inlineLabels as boolean | undefined,
-    };
-    for (let i = 0; i < SLOTS.length; i++) {
-      const val = normalizeSlotValue(
-        config[SLOTS[i]] as string | CalendarEntry[] | undefined,
-      );
-      if (val) normalized[SLOTS[i]] = val;
-      const email = config[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] as string | undefined;
-      if (email) normalized[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] = email;
-      const name = config[SidewaysCalendarCardEditor.NAME_KEYS[i]] as string | undefined;
-      if (name) normalized[SidewaysCalendarCardEditor.NAME_KEYS[i]] = name;
-      const person = config[SidewaysCalendarCardEditor.PERSON_KEYS[i]] as string | undefined;
-      if (person) normalized[SidewaysCalendarCardEditor.PERSON_KEYS[i]] = person;
-    }
-    this._config = normalized;
+    this._config = normalizeConfig(config);
   }
 
   private _fireChange() {
@@ -100,7 +49,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
 
   private _workStyleChanged(e: Event) {
     const target = e.target as HTMLSelectElement;
-    this._config = { ...this._config, workStyle: target.value };
+    this._config = { ...this._config, workStyle: target.value as CardConfig["workStyle"] };
     this._fireChange();
   }
 
@@ -144,7 +93,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
   }
 
   private _emailChanged(slotIndex: number, value: string) {
-    const key = SidewaysCalendarCardEditor.EMAIL_KEYS[slotIndex];
+    const key = EMAIL_KEYS[slotIndex];
     const cfg = { ...this._config };
     if (value) {
       cfg[key] = value;
@@ -156,7 +105,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
   }
 
   private _nameChanged(slotIndex: number, value: string) {
-    const key = SidewaysCalendarCardEditor.NAME_KEYS[slotIndex];
+    const key = NAME_KEYS[slotIndex];
     const cfg = { ...this._config };
     if (value) {
       cfg[key] = value;
@@ -168,7 +117,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
   }
 
   private _personChanged(slotIndex: number, value: string) {
-    const key = SidewaysCalendarCardEditor.PERSON_KEYS[slotIndex];
+    const key = PERSON_KEYS[slotIndex];
     const cfg = { ...this._config };
     if (value) {
       cfg[key] = value;
@@ -282,7 +231,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
 
         ${SLOTS.map((slot, i) => {
           const fallbackLabel = SLOT_LABELS[i];
-          const customName = this._config?.[SidewaysCalendarCardEditor.NAME_KEYS[i]];
+          const customName = this._config?.[NAME_KEYS[i]];
           const displayName = customName || `Calendar ${fallbackLabel}`;
           const color = calendarColor(i, scheme);
           const entries = this._config?.[slot] || [];
@@ -317,13 +266,13 @@ export class SidewaysCalendarCardEditor extends LitElement {
                         type="text"
                         class="email-input"
                         placeholder="e.g. Alice, Bob…"
-                        .value=${this._config?.[SidewaysCalendarCardEditor.NAME_KEYS[i]] || ""}
+                        .value=${this._config?.[NAME_KEYS[i]] || ""}
                         @change=${(e: Event) =>
                           this._nameChanged(i, (e.target as HTMLInputElement).value.trim())}
                       />
                       <label class="field-label">Person entity</label>
                       <select
-                        .value=${this._config?.[SidewaysCalendarCardEditor.PERSON_KEYS[i]] || ""}
+                        .value=${this._config?.[PERSON_KEYS[i]] || ""}
                         @change=${(e: Event) =>
                           this._personChanged(i, (e.target as HTMLSelectElement).value)}
                       >
@@ -331,7 +280,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
                         ${this._getPersonEntities().map(
                           (eid) => html`
                             <option value=${eid}
-                              ?selected=${eid === (this._config?.[SidewaysCalendarCardEditor.PERSON_KEYS[i]] || "")}>
+                              ?selected=${eid === (this._config?.[PERSON_KEYS[i]] || "")}>
                               ${this._friendlyName(eid)}
                             </option>
                           `,
@@ -393,7 +342,7 @@ export class SidewaysCalendarCardEditor extends LitElement {
                         type="email"
                         class="email-input"
                         placeholder="user@example.com"
-                        .value=${this._config?.[SidewaysCalendarCardEditor.EMAIL_KEYS[i]] || ""}
+                        .value=${this._config?.[EMAIL_KEYS[i]] || ""}
                         @change=${(e: Event) =>
                           this._emailChanged(i, (e.target as HTMLInputElement).value.trim())}
                       />

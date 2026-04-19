@@ -65,23 +65,6 @@ export const DEFAULT_CONFIG: LayoutConfig = {
   curveRadius: 12,
 };
 
-export const CALENDAR_COLORS = [
-  "#4285F4",
-  "#EA4335",
-  "#34A853",
-  "#FBBC04",
-  "#FF6D01",
-  "#46BDC6",
-  "#7B1FA2",
-  "#E91E63",
-];
-
-export function todayAt(hour: number): Date {
-  const d = new Date();
-  d.setHours(hour, 0, 0, 0);
-  return d;
-}
-
 export function hourToX(hour: number, config: LayoutConfig): number {
   const frac = (hour - config.startHour) / (config.endHour - config.startHour);
   const clamped = Math.max(0, Math.min(1, frac));

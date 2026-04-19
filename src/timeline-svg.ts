@@ -63,7 +63,7 @@ export function renderTimeline(
           labels,
         ),
       )}
-      ${renderEventBoxes(events, calendars, calIds, cs, config, workStyle)}
+      ${renderEventBoxes(events, calIds, cs, config, workStyle)}
       ${labels ? renderInlineLabelTexts(labels) : nothing}
       ${renderNowDot(now, config)}
     </svg>
@@ -319,7 +319,6 @@ function renderCalendarLine(
 
 function renderEventBoxes(
   events: TimelineEvent[],
-  calendars: CalendarInfo[],
   calendarOrder: string[],
   scheme: ColorScheme,
   config: LayoutConfig,

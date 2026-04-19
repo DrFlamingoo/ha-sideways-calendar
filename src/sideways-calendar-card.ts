@@ -6,40 +6,19 @@ import {
   TimelineEvent,
   CalendarInfo,
   CalendarEntry,
-  normalizeSlotValue,
   assignLanes,
 } from "./layout.js";
+import { getScheme, calendarColor, eventColor } from "./colors.js";
 import {
-  getScheme,
-  calendarColor,
-  eventColor,
-} from "./colors.js";
+  CardConfig,
+  Hass,
+  SLOTS,
+  EMAIL_KEYS,
+  NAME_KEYS,
+  PERSON_KEYS,
+  normalizeConfig,
+} from "./types.js";
 import "./editor.js";
-
-interface CardConfig {
-  type: string;
-  colorScheme?: string;
-  workStyle?: string;
-  showDeclined?: boolean;
-  showTentative?: boolean;
-  inlineLabels?: boolean;
-  calendarA?: CalendarEntry[];
-  calendarB?: CalendarEntry[];
-  calendarC?: CalendarEntry[];
-  calendarD?: CalendarEntry[];
-  emailA?: string;
-  emailB?: string;
-  emailC?: string;
-  emailD?: string;
-  nameA?: string;
-  nameB?: string;
-  nameC?: string;
-  nameD?: string;
-  personA?: string;
-  personB?: string;
-  personC?: string;
-  personD?: string;
-}
 
 interface HACalendarEventTime {
   dateTime?: string;
@@ -60,18 +39,6 @@ interface HAAttendee {
   response?: string; // "accepted" | "declined" | "tentative" | "needsAction"
 }
 
-interface HassEntity {
-  entity_id: string;
-  state: string;
-  attributes: Record<string, unknown>;
-}
-
-interface Hass {
-  user: { name: string };
-  states: Record<string, HassEntity>;
-  callApi: <T>(method: string, path: string) => Promise<T>;
-}
-
 function parseEventTime(time: HACalendarEventTime, fallback: Date): Date {
   if (time.dateTime) return new Date(time.dateTime);
   if (time.date) return new Date(time.date + "T00:00:00");
@@ -89,21 +56,10 @@ export class SidewaysCalendarCard extends LitElement {
   private _lastFetchKey = "";
   private _timer?: number;
 
-  private static readonly SLOTS = [
-    "calendarA",
-    "calendarB",
-    "calendarC",
-    "calendarD",
-  ] as const;
-
-  private static readonly SLOT_LABELS = ["A", "B", "C", "D"];
-  private static readonly NAME_KEYS = ["nameA", "nameB", "nameC", "nameD"] as const;
-  private static readonly PERSON_KEYS = ["personA", "personB", "personC", "personD"] as const;
-
   /** Build a map from entity_id → slot keys (one entity may appear in multiple slots). */
   private _entityToSlots(): Map<string, string[]> {
     const map = new Map<string, string[]>();
-    for (const slot of SidewaysCalendarCard.SLOTS) {
+    for (const slot of SLOTS) {
       const entries = this._config?.[slot];
       if (!entries) continue;
       for (const e of entries) {
@@ -115,14 +71,12 @@ export class SidewaysCalendarCard extends LitElement {
     return map;
   }
 
-  private static readonly EMAIL_KEYS = ["emailA", "emailB", "emailC", "emailD"] as const;
-
   /** Build a map from slot key → owner email. */
   private _slotToEmail(): Map<string, string> {
     const map = new Map<string, string>();
-    for (let i = 0; i < SidewaysCalendarCard.SLOTS.length; i++) {
-      const email = this._config?.[SidewaysCalendarCard.EMAIL_KEYS[i]];
-      if (email) map.set(SidewaysCalendarCard.SLOTS[i], email.toLowerCase());
+    for (let i = 0; i < SLOTS.length; i++) {
+      const email = this._config?.[EMAIL_KEYS[i]];
+      if (email) map.set(SLOTS[i], email.toLowerCase());
     }
     return map;
   }
@@ -130,7 +84,7 @@ export class SidewaysCalendarCard extends LitElement {
   /** Set of entity IDs flagged as "work" across all slots. */
   private _workEntities(): Set<string> {
     const set = new Set<string>();
-    for (const slot of SidewaysCalendarCard.SLOTS) {
+    for (const slot of SLOTS) {
       const entries = this._config?.[slot];
       if (!entries) continue;
       for (const e of entries) {
@@ -143,7 +97,7 @@ export class SidewaysCalendarCard extends LitElement {
   /** All unique entity IDs across all slots. */
   private _allEntityIds(): string[] {
     const ids: string[] = [];
-    for (const slot of SidewaysCalendarCard.SLOTS) {
+    for (const slot of SLOTS) {
       const entries = this._config?.[slot];
       if (!entries) continue;
       for (const e of entries) {
@@ -154,8 +108,8 @@ export class SidewaysCalendarCard extends LitElement {
   }
 
   /** Slot keys that have at least one entity. */
-  private _activeSlots(): typeof SidewaysCalendarCard.SLOTS[number][] {
-    return SidewaysCalendarCard.SLOTS.filter(
+  private _activeSlots(): typeof SLOTS[number][] {
+    return SLOTS.filter(
       (slot) => (this._config?.[slot]?.length ?? 0) > 0,
     );
   }
@@ -186,28 +140,7 @@ export class SidewaysCalendarCard extends LitElement {
   }
 
   setConfig(config: Record<string, unknown>) {
-    const normalized: CardConfig = {
-      type: config.type as string,
-      colorScheme: config.colorScheme as string | undefined,
-      workStyle: config.workStyle as string | undefined,
-      showDeclined: config.showDeclined as boolean | undefined,
-      showTentative: config.showTentative as boolean | undefined,
-      inlineLabels: config.inlineLabels as boolean | undefined,
-    };
-    for (let i = 0; i < SidewaysCalendarCard.SLOTS.length; i++) {
-      const slot = SidewaysCalendarCard.SLOTS[i];
-      const val = normalizeSlotValue(
-        config[slot] as string | CalendarEntry[] | undefined,
-      );
-      if (val) normalized[slot] = val;
-      const email = config[SidewaysCalendarCard.EMAIL_KEYS[i]] as string | undefined;
-      if (email) normalized[SidewaysCalendarCard.EMAIL_KEYS[i]] = email;
-      const name = config[SidewaysCalendarCard.NAME_KEYS[i]] as string | undefined;
-      if (name) normalized[SidewaysCalendarCard.NAME_KEYS[i]] = name;
-      const person = config[SidewaysCalendarCard.PERSON_KEYS[i]] as string | undefined;
-      if (person) normalized[SidewaysCalendarCard.PERSON_KEYS[i]] = person;
-    }
-    this._config = normalized;
+    this._config = normalizeConfig(config);
     this._lastFetchKey = "";
     this._buildCalendarInfos();
     this._tryFetchEvents();
@@ -227,7 +160,7 @@ export class SidewaysCalendarCard extends LitElement {
     );
     const stub: Record<string, unknown> = {};
     for (let i = 0; i < Math.min(calendars.length, 4); i++) {
-      stub[SidewaysCalendarCard.SLOTS[i]] = [{ entity: calendars[i] }];
+      stub[SLOTS[i]] = [{ entity: calendars[i] }];
     }
     return stub;
   }
@@ -240,8 +173,8 @@ export class SidewaysCalendarCard extends LitElement {
     const scheme = getScheme(this._config?.colorScheme);
     const active = this._activeSlots();
     this._calendars = active.map((slot, i) => {
-      const slotIdx = SidewaysCalendarCard.SLOTS.indexOf(slot);
-      const customName = this._config?.[SidewaysCalendarCard.NAME_KEYS[slotIdx]];
+      const slotIdx = SLOTS.indexOf(slot);
+      const customName = this._config?.[NAME_KEYS[slotIdx]];
       const entries = this._config[slot]!;
       const fallbackName =
         (this._hass?.states[entries[0].entity]?.attributes
@@ -347,7 +280,7 @@ export class SidewaysCalendarCard extends LitElement {
     const allEvents: RawEvent[] = [];
     const consumedWorkEvents = new Set<string>(); // IDs of work events nested inside envelopes
 
-    for (const slot of SidewaysCalendarCard.SLOTS) {
+    for (const slot of SLOTS) {
       const personal = slotPersonal.get(slot) || [];
       const work = slotWork.get(slot) || [];
 
@@ -396,11 +329,11 @@ export class SidewaysCalendarCard extends LitElement {
           );
           for (const child of event.children || []) {
             const ck = `${child.title}|${roundMin(child.start)}|${roundMin(child.end)}`;
-            const dup = prev.find(
-              (c) => `${c.title}|${roundMin(c.start)}|${roundMin(c.end)}` === ck,
-            );
-            if (dup) {
+            if (prevKeys.has(ck)) {
               /* merge calendarIds into existing child */
+              const dup = prev.find(
+                (c) => `${c.title}|${roundMin(c.start)}|${roundMin(c.end)}` === ck,
+              )!;
               for (const cid of child.calendarIds) {
                 if (!dup.calendarIds.includes(cid)) dup.calendarIds.push(cid);
               }
@@ -518,7 +451,7 @@ window.customCards.push({
   type: "sideways-calendar-card",
   name: "Sideways Calendar Card",
   description:
-    "Displays the number of events for today per configured calendar.",
+    "A horizontal 24-hour timeline of your day with git-branch-style calendar lines.",
 });
 
 declare global {

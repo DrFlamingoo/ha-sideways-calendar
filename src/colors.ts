@@ -221,35 +221,3 @@ export function eventColor(
   if (colors.length === 0) return "#888";
   return scheme.mix(colors);
 }
-
-/**
- * Generate all combinations for a visual sampler.
- * Returns array of { label, calendarIds, color }.
- */
-export function allCombinations(
-  calendarIds: string[],
-  scheme: ColorScheme,
-  calendarNames?: string[],
-): Array<{ label: string; ids: string[]; color: string }> {
-  const n = calendarIds.length;
-  const results: Array<{ label: string; ids: string[]; color: string }> = [];
-  const labels = calendarNames || ["A", "B", "C", "D"];
-
-  for (let mask = 1; mask < 1 << n; mask++) {
-    const ids: string[] = [];
-    let label = "";
-    for (let i = 0; i < n; i++) {
-      if (mask & (1 << i)) {
-        ids.push(calendarIds[i]);
-        label += (label ? " + " : "") + (labels[i] || `${i}`);
-      }
-    }
-    results.push({
-      label,
-      ids,
-      color: eventColor(ids, calendarIds, scheme),
-    });
-  }
-
-  return results;
-}
