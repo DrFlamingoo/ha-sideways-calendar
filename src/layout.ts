@@ -63,9 +63,18 @@ export function todayAt(hour: number): Date {
   return d;
 }
 
+export function hourToX(hour: number, config: LayoutConfig): number {
+  const frac = (hour - config.startHour) / (config.endHour - config.startHour);
+  const clamped = Math.max(0, Math.min(1, frac));
+  const usable = config.viewBoxWidth - config.paddingLeft - config.paddingRight;
+  return config.paddingLeft + clamped * usable;
+}
+
 export function timeToX(date: Date, config: LayoutConfig): number {
-  const hours =
-    date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+  const now = new Date();
+  const todayMidnight = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const ms = date.getTime() - todayMidnight;
+  const hours = ms / 3_600_000;
   const frac = (hours - config.startHour) / (config.endHour - config.startHour);
   const clamped = Math.max(0, Math.min(1, frac));
   const usable = config.viewBoxWidth - config.paddingLeft - config.paddingRight;

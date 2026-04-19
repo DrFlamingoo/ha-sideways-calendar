@@ -6,12 +6,12 @@ import {
   CalendarInfo,
   LayoutConfig,
   DEFAULT_CONFIG,
+  hourToX,
   timeToX,
   laneToY,
   calendarHomeY,
   getLaneCount,
   computeHeight,
-  todayAt,
 } from "./layout.js";
 
 /* ------------------------------------------------------------------ */
@@ -49,12 +49,12 @@ export function renderTimeline(
 /* ------------------------------------------------------------------ */
 
 function renderAxis(config: LayoutConfig): SVGTemplateResult {
-  const xStart = timeToX(todayAt(config.startHour), config);
-  const xEnd = timeToX(todayAt(config.endHour), config);
+  const xStart = hourToX(config.startHour, config);
+  const xEnd = hourToX(config.endHour, config);
 
   const ticks: SVGTemplateResult[] = [];
   for (let h = config.startHour; h <= config.endHour; h++) {
-    const x = timeToX(todayAt(h), config);
+    const x = hourToX(h, config);
     const isMajor = h % 3 === 0;
     const tickLen = isMajor ? 6 : 3;
     ticks.push(svg`
@@ -99,8 +99,8 @@ function renderCalendarLine(
     .filter((e) => e.calendarIds.includes(calendarId))
     .sort((a, b) => a.start.getTime() - b.start.getTime());
 
-  const xStart = timeToX(todayAt(config.startHour), config);
-  const xEnd = timeToX(todayAt(config.endHour), config);
+  const xStart = hourToX(config.startHour, config);
+  const xEnd = hourToX(config.endHour, config);
   const cr = config.curveRadius;
 
   if (calEvents.length === 0) {
@@ -118,8 +118,8 @@ function renderCalendarLine(
   for (let i = 0; i < calEvents.length; i++) {
     const event = calEvents[i];
     const targetY = laneToY(event.lane, config) + config.laneHeight / 2;
-    const ex1 = timeToX(event.start, config);
-    const ex2 = timeToX(event.end, config);
+    const ex1 = Math.max(timeToX(event.start, config), curX);
+    const ex2 = Math.max(timeToX(event.end, config), ex1);
 
     if (curY === homeY) {
       /* ---- branch down from axis to event lane ---- */
@@ -128,21 +128,22 @@ function renderCalendarLine(
         parts.push(`L ${branchX} ${homeY}`);
         curX = branchX;
       }
-      const midX = (curX + ex1) / 2;
+      const destX = Math.max(curX, ex1);
+      const midX = (curX + destX) / 2;
       parts.push(
-        `C ${midX} ${homeY} ${midX} ${targetY} ${ex1} ${targetY}`,
+        `C ${midX} ${homeY} ${midX} ${targetY} ${destX} ${targetY}`,
       );
-      curX = ex1;
+      curX = destX;
       curY = targetY;
     } else if (curY !== targetY) {
       /* ---- lane-to-lane transition (overlapping same-cal events) ---- */
-      const transX = Math.min(curX + cr, ex1);
-      const midX = (curX + transX) / 2;
+      const destX = Math.max(curX, Math.min(curX + cr, ex1));
+      const midX = (curX + destX) / 2;
       parts.push(
-        `C ${midX} ${curY} ${midX} ${targetY} ${transX} ${targetY}`,
+        `C ${midX} ${curY} ${midX} ${targetY} ${destX} ${targetY}`,
       );
-      if (transX < ex1) parts.push(`L ${ex1} ${targetY}`);
-      curX = ex1;
+      if (destX < ex1) parts.push(`L ${ex1} ${targetY}`);
+      curX = Math.max(curX, ex1);
       curY = targetY;
     }
 
@@ -167,13 +168,14 @@ function renderCalendarLine(
 
   /* ---- return to axis if still in a lane ---- */
   if (curY !== homeY) {
-    const retX = curX + cr;
+    const retX = Math.min(curX + cr, xEnd);
     const midX = (curX + retX) / 2;
     parts.push(`C ${midX} ${curY} ${midX} ${homeY} ${retX} ${homeY}`);
     curX = retX;
+    curY = homeY;
   }
 
-  /* ---- final stretch to end ---- */
+  /* ---- always extend to end of day ---- */
   if (curX < xEnd) parts.push(`L ${xEnd} ${homeY}`);
 
   return svg`
@@ -205,6 +207,10 @@ function renderEventBoxes(
 
     return svg`
       <g>
+        <rect x="${x}" y="${y}" width="${w}" height="${h}"
+              rx="4" ry="4"
+              fill="var(--card-background-color, #fff)"
+              stroke="none" />
         <rect x="${x}" y="${y}" width="${w}" height="${h}"
               rx="4" ry="4"
               fill="${color}" fill-opacity="0.15"
