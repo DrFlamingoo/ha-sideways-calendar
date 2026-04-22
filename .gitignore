@@ -1,2 +1,25 @@
+.env
+
+# Node dependencies
 node_modules/
-dist/
+
+# Build artifacts except distributable JS for HACS
+dist/*
+!dist/sideways-calendar-card.js
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+
+# Misc
+*.swp
+*.swo
