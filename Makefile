@@ -3,7 +3,7 @@ CONTAINER := ha-test
 HA_IMAGE := ghcr.io/home-assistant/home-assistant:stable
 HA_PORT := 8123
 
-.PHONY: build watch ha-start ha-stop ha-restart ha-logs ha-open clean
+.PHONY: build watch ha-start ha-stop ha-restart ha-logs ha-open ha-sample clean
 
 build:
 	npm run build
@@ -31,6 +31,13 @@ ha-logs:
 
 ha-open:
 	xdg-open http://localhost:$(HA_PORT)
+
+ha-sample:
+	@if [ -z "$(HA_TOKEN)" ]; then \
+		echo "Set HA_TOKEN first: export HA_TOKEN=<your long-lived token>"; \
+		exit 1; \
+	fi
+	./scripts/sample-day.sh http://localhost:$(HA_PORT) $(HA_TOKEN)
 
 clean:
 	rm -rf dist

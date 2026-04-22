@@ -1,6 +1,6 @@
 {
   "name": "ha-sideways-calendar",
-  "version": "0.9.0",
+  "version": "0.9.1",
   "description": "A Home Assistant card showing a horizontal 24-hour timeline with git-branch-style calendar lines.",
   "main": "dist/sideways-calendar-card.js",
   "scripts": {

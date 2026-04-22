@@ -2,6 +2,8 @@
 
 A Home Assistant custom Lovelace card that displays a horizontal 24-hour timeline of your day, with git-branch-style calendar lines routing to event boxes.
 
+![Screenshot](screenshot.png)
+
 ## Features
 
 - **24-hour horizontal timeline** — time axis with labeled ticks
@@ -102,16 +104,23 @@ npm install
 | `make ha-restart` | Rebuild the card and restart the HA container |
 | `make ha-logs` | Tail the HA container logs |
 | `make ha-open` | Open HA in the browser |
+| `make ha-sample` | Populate HA with sample calendars and events for today |
 | `make clean` | Remove `dist/` |
 
 ### Testing workflow
 
 1. `make ha-start` — builds the card and spins up HA in Docker.
 2. Complete the HA onboarding at `http://localhost:8123`.
-3. Add the resource: **Settings** → **Dashboards** → **⋮** → **Resources** → add `/local/sideways-calendar-card.js` as **JavaScript Module**.
-4. Add the card to a dashboard.
-5. Edit source, run `make build`, then hard-refresh the browser (`Ctrl+Shift+R`).
-6. `make ha-stop` when done.
+3. Create a long-lived access token:
+   - Go to your profile: click your user icon (bottom-left) → **Security** tab.
+   - Scroll to **Long-Lived Access Tokens** → **Create Token**.
+   - Name it anything (e.g. "dev"), copy the token.
+   - `export HA_TOKEN="<paste token here>"`
+4. Add the resource: **Settings** → **Dashboards** → **⋮** → **Resources** → add `/local/sideways-calendar-card.js` as **JavaScript Module**.
+5. `make ha-sample` — creates 4 people's calendars and a full day of sample events.
+6. Add the card to a dashboard (the script prints a suggested YAML config).
+7. Edit source, run `make build`, then hard-refresh the browser (`Ctrl+Shift+R`).
+8. `make ha-stop` when done.
 
 ### Project structure
 
