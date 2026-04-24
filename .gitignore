@@ -5,7 +5,6 @@ node_modules/
 
 # Build artifacts except distributable JS for HACS
 dist/*
-!dist/sideways-calendar-card.js
 
 # Logs
 npm-debug.log*
