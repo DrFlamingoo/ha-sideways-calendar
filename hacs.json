@@ -2,5 +2,6 @@
   "name": "Sideways Calendar Card",
   "render_readme": true,
   "filename": "dist/sideways-calendar-card.js",
-  "content_in_root": false
+  "content_in_root": false,
+  "homeassistant": "2024.12.0"
 }
