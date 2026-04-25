@@ -1,5 +1,7 @@
 # Sideways Calendar Card
 
+[![Release](https://github.com/DrFlamingoo/ha-timeline-calendar/actions/workflows/release.yml/badge.svg?branch=master&event=release)](https://github.com/DrFlamingoo/ha-timeline-calendar/actions/workflows/release.yml)
+
 A Home Assistant custom Lovelace card that displays a horizontal 24-hour timeline of your day, with git-branch-style calendar lines routing to event boxes.
 
 ![Screenshot](screenshot.png)
